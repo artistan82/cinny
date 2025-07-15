@@ -66,6 +66,8 @@ import {
   useRoomsNotificationPreferencesContext,
 } from '../../hooks/useRoomsNotificationPreferences';
 import { useCallState } from '../../pages/client/call/CallProvider';
+import { JumpToTime } from './jump-to-time';
+import { useRoomNavigate } from '../../hooks/useRoomNavigate';
 
 type RoomMenuProps = {
   room: Room;
@@ -80,6 +82,7 @@ const RoomMenu = forwardRef<HTMLDivElement, RoomMenuProps>(({ room, requestClose
   const canInvite = canDoAction('invite', getPowerLevel(mx.getUserId() ?? ''));
   const notificationPreferences = useRoomsNotificationPreferencesContext();
   const notificationMode = getRoomNotificationMode(notificationPreferences, room.roomId);
+  const { navigateRoom } = useRoomNavigate();
 
   const handleMarkAsRead = () => {
     markAsRead(mx, room.roomId, hideActivity);
@@ -176,6 +179,33 @@ const RoomMenu = forwardRef<HTMLDivElement, RoomMenuProps>(({ room, requestClose
             Room Settings
           </Text>
         </MenuItem>
+        <UseStateProvider initial={false}>
+          {(promptJump, setPromptJump) => (
+            <>
+              <MenuItem
+                onClick={() => setPromptJump(true)}
+                size="300"
+                after={<Icon size="100" src={Icons.RecentClock} />}
+                radii="300"
+                aria-pressed={promptJump}
+              >
+                <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
+                  Jump to Time
+                </Text>
+              </MenuItem>
+              {promptJump && (
+                <JumpToTime
+                  onSubmit={(eventId) => {
+                    setPromptJump(false);
+                    navigateRoom(room.roomId, eventId);
+                    requestClose();
+                  }}
+                  onCancel={() => setPromptJump(false)}
+                />
+              )}
+            </>
+          )}
+        </UseStateProvider>
       </Box>
       <Line variant="Surface" size="300" />
       <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
