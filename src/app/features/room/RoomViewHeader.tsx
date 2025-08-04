@@ -109,8 +109,8 @@ const RoomMenu = forwardRef<HTMLDivElement, RoomMenuProps>(({ room, requestClose
   };
 
   return (
-    <Menu ref={ref} style={{ minWidth: toRem(200) }}>
-      <Box direction="Column" gap="100" style={{ padding: config.space.S200 }}>
+    <Menu ref={ref} style={{ maxWidth: toRem(160), width: '100vw' }}>
+      <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
         <MenuItem
           onClick={handleMarkAsRead}
           size="300"
@@ -145,7 +145,7 @@ const RoomMenu = forwardRef<HTMLDivElement, RoomMenuProps>(({ room, requestClose
         </RoomNotificationModeSwitcher>
       </Box>
       <Line variant="Surface" size="300" />
-      <Box direction="Column" gap="100" style={{ padding: config.space.S200 }}>
+      <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
         <MenuItem
           onClick={handleInvite}
           variant="Primary"
@@ -208,7 +208,7 @@ const RoomMenu = forwardRef<HTMLDivElement, RoomMenuProps>(({ room, requestClose
         </UseStateProvider>
       </Box>
       <Line variant="Surface" size="300" />
-      <Box direction="Column" gap="100" style={{ padding: config.space.S200 }}>
+      <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
         <UseStateProvider initial={false}>
           {(promptLeave, setPromptLeave) => (
             <>
