@@ -136,21 +136,8 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
                           </PersistentCallContainer>
                         </ClientLayout>
                       </CallProvider>
-                      <ClientLayout
-                        nav={
-                          <MobileFriendlyClientNav>
-                            <SidebarNav />
-                          </MobileFriendlyClientNav>
-                        }
-                      >
-                        <CallProvider>
-                          <PersistentCallContainer>
-                            <Outlet />
-                          </PersistentCallContainer>
-                        </CallProvider>
-                      </ClientLayout>
-                      <CreateRoomModalRenderer />
-                      <CreateSpaceModalRenderer />
+                    <CreateRoomModalRenderer />
+                    <CreateSpaceModalRenderer />
                       <RoomSettingsRenderer />
                       <SpaceSettingsRenderer />
                       <ReceiveSelfDeviceVerification />
