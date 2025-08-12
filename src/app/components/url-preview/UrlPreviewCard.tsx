@@ -1,19 +1,27 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IPreviewUrlResponse } from 'matrix-js-sdk';
-import { Box, Icon, IconButton, Icons, Scroll, Spinner, Text, as, color, config } from 'folds';
+import { Box, Icon, IconButton, Icons, Scroll, Spinner, as, config } from 'folds';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
-import { UrlPreview, UrlPreviewContent, UrlPreviewDescription, UrlPreviewImg } from './UrlPreview';
+import {
+  UrlPreview,
+  UrlPreviewContent,
+  UrlPreviewDescription,
+  UrlPreviewImage,
+  UrlPreviewLink,
+  UrlPreviewSiteName,
+  UrlPreviewTitle,
+} from './UrlPreview';
 import {
   getIntersectionObserverEntry,
   useIntersectionObserver,
 } from '../../hooks/useIntersectionObserver';
-import * as css from './UrlPreviewCard.css';
 import { tryDecodeURIComponent } from '../../utils/dom';
 import { mxcUrlToHttp } from '../../utils/matrix';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
+import * as css from './UrlPreview.css';
 
-const linkStyles = { color: color.Success.Main };
+const MAX_THUMBNAIL_SIZE = 600;
 
 export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
   ({ url, ts, ...props }, ref) => {
@@ -29,44 +37,109 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
 
     if (previewStatus.status === AsyncStatus.Error) return null;
 
-    const renderContent = (prev: IPreviewUrlResponse) => {
-      const imgUrl = mxcUrlToHttp(mx, prev['og:image'] || '', useAuthentication, 256, 256, 'scale', false);
+    // Extract preview data at the top level
+    const previewData = previewStatus.status === AsyncStatus.Success ? previewStatus.data : null;
+    const ogImage = previewData?.['og:image'];
+    const ogImageWidth = previewData ? Number(previewData['og:image:width']) || null : null;
+    const ogImageHeight = previewData ? Number(previewData['og:image:height']) || null : null;
+    const siteName = previewData?.['og:site_name'];
+    const title = previewData?.['og:title'];
+    const description = previewData?.['og:description'];
 
-      return (
-        <>
-          {imgUrl && <UrlPreviewImg src={imgUrl} alt={prev['og:title']} title={prev['og:title']} />}
-          <UrlPreviewContent>
-            <Text
-              style={linkStyles}
-              truncate
-              as="a"
-              href={url}
-              target="_blank"
-              rel="no-referrer"
-              size="T200"
-              priority="300"
-            >
-              {typeof prev['og:site_name'] === 'string' && `${prev['og:site_name']} | `}
-              {tryDecodeURIComponent(url)}
-            </Text>
-            <Text truncate priority="400">
-              <b>{prev['og:title']}</b>
-            </Text>
-            <Text size="T200" priority="300">
-              <UrlPreviewDescription>{prev['og:description']}</UrlPreviewDescription>
-            </Text>
-          </UrlPreviewContent>
-        </>
-      );
-    };
+    // Calculate aspect ratio at the top level
+    const aspectRatio = useMemo(() => {
+      if (ogImageWidth && ogImageHeight) {
+        return ogImageWidth / ogImageHeight;
+      }
+      return null;
+    }, [ogImageWidth, ogImageHeight]);
+
+    // Generate image URLs at the top level
+    const { thumbnailUrl, fullImageUrl } = useMemo(() => {
+      if (!ogImage) return { thumbnailUrl: null, fullImageUrl: null };
+
+      // Extract MXC ID from the og:image URL
+      const mxcMatch = ogImage.match(/^mxc:\/\/([^\/]+)\/(.+)$/);
+      if (!mxcMatch) {
+        // If not MXC URL, use as-is
+        return { thumbnailUrl: ogImage, fullImageUrl: ogImage };
+      }
+
+      const [, serverName, mediaId] = mxcMatch;
+      const baseUrl = mx.getHomeserverUrl();
+      
+      // Create thumbnail URL (max 600x600 as mentioned in the requirements)
+      let thumbnailWidth = MAX_THUMBNAIL_SIZE;
+      let thumbnailHeight = MAX_THUMBNAIL_SIZE;
+      
+      // Calculate optimal thumbnail dimensions while maintaining aspect ratio
+      if (aspectRatio) {
+        if (aspectRatio > 1) {
+          // Landscape: limit width, calculate height
+          thumbnailHeight = Math.min(MAX_THUMBNAIL_SIZE, Math.round(MAX_THUMBNAIL_SIZE / aspectRatio));
+        } else {
+          // Portrait: limit height, calculate width
+          thumbnailWidth = Math.min(MAX_THUMBNAIL_SIZE, Math.round(MAX_THUMBNAIL_SIZE * aspectRatio));
+        }
+      }
+
+      const thumbnailUrl = `${baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=${thumbnailWidth}&height=${thumbnailHeight}&method=scale`;
+      
+      // Create full image download URL
+      const fullImageUrl = `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
+      
+      return { thumbnailUrl, fullImageUrl };
+    }, [ogImage, aspectRatio, mx]);
+
+    const renderContent = () => (
+      <>
+        {thumbnailUrl && (
+          <UrlPreviewImage
+            src={thumbnailUrl}
+            fullSrc={fullImageUrl || undefined}
+            alt={title || 'Preview image'}
+            title={title || undefined}
+            aspectRatio={aspectRatio || undefined}
+          />
+        )}
+        <UrlPreviewContent>
+          {siteName && (
+            <UrlPreviewSiteName>
+              {siteName}
+            </UrlPreviewSiteName>
+          )}
+          
+          {title && (
+            <UrlPreviewTitle>
+              {title}
+            </UrlPreviewTitle>
+          )}
+          
+          {description && (
+            <UrlPreviewDescription>
+              {description}
+            </UrlPreviewDescription>
+          )}
+          
+          <UrlPreviewLink
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={url}
+          >
+            {tryDecodeURIComponent(url)}
+          </UrlPreviewLink>
+        </UrlPreviewContent>
+      </>
+    );
 
     return (
       <UrlPreview {...props} ref={ref}>
         {previewStatus.status === AsyncStatus.Success ? (
-          renderContent(previewStatus.data)
+          renderContent()
         ) : (
-          <Box grow="Yes" alignItems="Center" justifyContent="Center">
-            <Spinner variant="Secondary" size="400" />
+          <Box alignItems="Center" justifyContent="Center" style={{ minHeight: '102px' }}>
+            <Spinner variant="Secondary" size="600" />
           </Box>
         )}
       </UrlPreview>
@@ -123,6 +196,7 @@ export const UrlPreviewHolder = as<'div'>(({ children, ...props }, ref) => {
       behavior: 'smooth',
     });
   };
+  
   const handleScrollFront = () => {
     const scroll = scrollRef.current;
     if (!scroll) return;
