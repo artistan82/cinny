@@ -428,7 +428,7 @@ export function Space() {
     getSpaceRoomPath(spaceIdOrAlias, getCanonicalAliasOrRoomId(mx, roomId));
 
   return (
-    <PageNav>
+    <PageNav size="400" resizable>
       <SpaceHeader />
       <PageNavContent scrollRef={scrollRef}>
         <Box direction="Column" gap="300">

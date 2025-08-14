@@ -3,6 +3,9 @@ import { recipe, RecipeVariants } from '@vanilla-extract/recipes';
 import { DefaultReset, color, config, toRem } from 'folds';
 
 export const PageNav = recipe({
+  base: {
+    position: 'relative',
+  },
   variants: {
     size: {
       '400': {
@@ -11,6 +14,7 @@ export const PageNav = recipe({
       '300': {
         width: toRem(222),
       },
+      dynamic: {},
     },
   },
   defaultVariants: {

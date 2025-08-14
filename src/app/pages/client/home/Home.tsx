@@ -244,7 +244,7 @@ export function Home() {
   );
 
   return (
-    <PageNav>
+    <PageNav size="400" resizable>
       <HomeHeader />
       {noRoomToDisplay ? (
         <HomeEmpty />

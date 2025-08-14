@@ -93,7 +93,7 @@ export function RoomSettings({ initialPage, requestClose }: RoomSettingsProps) {
     <PageRoot
       nav={
         screenSize === ScreenSize.Mobile && activePage !== undefined ? undefined : (
-          <PageNav size="300">
+          <PageNav size="300" resizable>
             <PageNavHeader outlined={false}>
               <Box grow="Yes" gap="200">
                 <Avatar size="200" radii="300">

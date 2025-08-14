@@ -197,7 +197,7 @@ export function Direct() {
   );
 
   return (
-    <PageNav>
+    <PageNav size="400" resizable>
       <DirectHeader />
       {noRoomToDisplay ? (
         <DirectEmpty />

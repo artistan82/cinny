@@ -40,6 +40,8 @@ export interface Settings {
   dateFormatString: string;
 
   developerTools: boolean;
+
+  pageNavWidth: number;
 }
 
 const defaultSettings: Settings = {
@@ -73,6 +75,8 @@ const defaultSettings: Settings = {
   dateFormatString: 'D MMM YYYY',
 
   developerTools: false,
+
+  pageNavWidth: 256,
 };
 
 export const getSettings = () => {
