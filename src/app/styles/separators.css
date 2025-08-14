@@ -1,0 +1,259 @@
+/* Theme variables - adjust to match your design system */
+:root {
+  --separator-header-bg: transparent;
+  --separator-header-hover: rgba(0, 0, 0, 0.05);
+  --separator-text-color: #6b7280;
+  --separator-border-color: #e5e7eb;
+  --channel-hover-bg: rgba(0, 0, 0, 0.05);
+  --channel-active-bg: rgba(0, 0, 0, 0.1);
+  --drag-preview-opacity: 0.5;
+  --drop-zone-border: #3b82f6;
+}
+
+/* Dark mode variables */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --separator-header-hover: rgba(255, 255, 255, 0.05);
+    --separator-text-color: #9ca3af;
+    --separator-border-color: #374151;
+    --channel-hover-bg: rgba(255, 255, 255, 0.05);
+    --channel-active-bg: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Separator container styles */
+.separator-container {
+  position: relative;
+  user-select: none;
+}
+
+.separator-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.5rem;
+  background: var(--separator-header-bg);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.separator-header:hover {
+  background: var(--separator-header-hover);
+}
+
+.separator-header.dragging {
+  opacity: var(--drag-preview-opacity);
+  cursor: move;
+}
+
+.separator-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--separator-text-color);
+}
+
+.separator-count {
+  font-size: 0.75rem;
+  color: var(--separator-text-color);
+  opacity: 0.7;
+  margin-left: 0.25rem;
+}
+
+/* Channel styles */
+.channel-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  margin-left: 1rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.channel-item:hover {
+  background: var(--channel-hover-bg);
+}
+
+.channel-item.active {
+  background: var(--channel-active-bg);
+  font-weight: 500;
+}
+
+.channel-item.dragging {
+  opacity: var(--drag-preview-opacity);
+  cursor: move;
+}
+
+/* Empty separator drop zone */
+.empty-separator {
+  margin-left: 1rem;
+  padding: 2rem 0.5rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--separator-text-color);
+  border: 2px dashed var(--separator-border-color);
+  border-radius: 0.375rem;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+.empty-separator.drag-over {
+  opacity: 1;
+  border-color: var(--drop-zone-border);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* Options menu */
+.separator-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 0.25rem;
+  min-width: 10rem;
+  background: white;
+  border: 1px solid var(--separator-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  .separator-menu {
+    background: #1f2937;
+  }
+}
+
+.separator-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: background-color 0.15s ease;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.separator-menu-item:hover {
+  background: var(--channel-hover-bg);
+}
+
+.separator-menu-item.destructive {
+  color: #ef4444;
+}
+
+/* Inline edit input */
+.separator-rename-input {
+  padding: 0.125rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: white;
+  border: 1px solid var(--separator-border-color);
+  border-radius: 0.25rem;
+  outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .separator-rename-input {
+    background: #1f2937;
+    color: white;
+  }
+}
+
+.separator-rename-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Collapse/expand animation */
+.separator-channels {
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.separator-channels.collapsed {
+  max-height: 0;
+}
+
+/* Drag and drop visual feedback */
+.drag-preview {
+  position: fixed;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.8;
+  transform: rotate(2deg);
+}
+
+.drop-indicator {
+  height: 2px;
+  background: var(--drop-zone-border);
+  margin: 0.25rem 0;
+  border-radius: 1px;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Confirmation dialog */
+.confirmation-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+
+.confirmation-dialog {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 28rem;
+  animation: slideUp 0.2s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  .confirmation-dialog {
+    background: #1f2937;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(1rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

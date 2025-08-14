@@ -1,0 +1,265 @@
+/* Separator Container */
+.separatorContainer {
+  position: relative;
+  margin-bottom: var(--sp-xs, 4px);
+  transition: background-color 0.2s ease;
+}
+
+.separatorContainer.isDragging {
+  opacity: 0.5;
+}
+
+.separatorContainer.isOver {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-radius: var(--radii-300, 6px);
+}
+
+/* Separator Header */
+.separatorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-xs, 4px) var(--sp-sm, 8px);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radii-300, 6px);
+  transition: background-color 0.15s ease;
+}
+
+.separatorHeader:hover {
+  background-color: var(--bg-surface-hover, rgba(0, 0, 0, 0.05));
+}
+
+.separatorTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs, 4px);
+  flex: 1;
+}
+
+.separatorName {
+  font-size: var(--fs-s2, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tc-surface-low, #6b7280);
+}
+
+.separatorCount {
+  font-size: var(--fs-s2, 12px);
+  color: var(--tc-surface-low, #6b7280);
+  opacity: 0.7;
+}
+
+.separatorMenuButton {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.separatorHeader:hover .separatorMenuButton,
+.separatorMenuButton.isOpen {
+  opacity: 1;
+}
+
+/* Separator Content */
+.separatorContent {
+  margin-left: var(--sp-md, 16px);
+  padding-top: var(--sp-xs, 4px);
+}
+
+.separatorContent.collapsed {
+  display: none;
+}
+
+/* Empty Separator */
+.emptySeparator {
+  padding: var(--sp-lg, 32px) var(--sp-md, 16px);
+  text-align: center;
+  border: 2px dashed var(--bg-surface-border, #e5e7eb);
+  border-radius: var(--radii-300, 6px);
+  opacity: 0.5;
+  transition: all 0.2s ease;
+  margin: var(--sp-xs, 4px) 0;
+}
+
+.emptySeparator.dragOver {
+  opacity: 1;
+  border-color: rgb(59, 130, 246);
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.emptySeparatorText {
+  font-size: var(--fs-s2, 12px);
+  color: var(--tc-surface-low, #6b7280);
+}
+
+/* Draggable Room Item */
+.draggableRoom {
+  transition: opacity 0.15s ease;
+  cursor: move;
+}
+
+.draggableRoom.isDragging {
+  opacity: 0.5;
+}
+
+.draggableRoom:hover {
+  background-color: var(--bg-surface-hover, rgba(0, 0, 0, 0.05));
+  border-radius: var(--radii-300, 6px);
+}
+
+/* Separator Input */
+.separatorInput {
+  width: 100%;
+  padding: var(--sp-xs, 4px) var(--sp-sm, 8px);
+  border-radius: var(--radii-300, 6px);
+  border: 1px solid var(--bg-surface-border, #e5e7eb);
+  background-color: var(--bg-surface, white);
+  color: var(--tc-surface-high, #000);
+  font-size: var(--fs-s2, 12px);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.separatorInput:focus {
+  border-color: var(--bg-primary, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.separatorInputContainer {
+  display: flex;
+  gap: var(--sp-xs, 4px);
+  padding: var(--sp-sm, 8px);
+}
+
+.separatorInputActions {
+  display: flex;
+  gap: var(--sp-xs, 4px);
+}
+
+/* Separator Menu */
+.separatorMenu {
+  background-color: var(--bg-surface, white);
+  border: 1px solid var(--bg-surface-border, #e5e7eb);
+  border-radius: var(--radii-400, 8px);
+  box-shadow: var(--sh-menu, 0 4px 6px rgba(0, 0, 0, 0.1));
+  overflow: hidden;
+}
+
+.separatorMenuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm, 8px);
+  padding: var(--sp-sm, 8px) var(--sp-md, 12px);
+  font-size: var(--fs-s3, 14px);
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.separatorMenuItem:hover {
+  background-color: var(--bg-surface-hover, rgba(0, 0, 0, 0.05));
+}
+
+.separatorMenuItem.destructive {
+  color: var(--tc-danger, #ef4444);
+}
+
+.separatorMenuItem.destructive:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Add Separator Button */
+.addSeparatorButton {
+  width: 100%;
+  padding: var(--sp-sm, 8px);
+  margin-top: var(--sp-sm, 8px);
+  border: 1px dashed var(--bg-surface-border, #e5e7eb);
+  border-radius: var(--radii-300, 6px);
+  background: transparent;
+  color: var(--tc-surface-low, #6b7280);
+  font-size: var(--fs-s2, 12px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs, 4px);
+}
+
+.addSeparatorButton:hover {
+  border-color: var(--bg-primary, #3b82f6);
+  color: var(--bg-primary, #3b82f6);
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .separatorHeader:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .separatorName,
+  .separatorCount {
+    color: #9ca3af;
+  }
+
+  .emptySeparator {
+    border-color: #374151;
+  }
+
+  .separatorInput {
+    background-color: #1f2937;
+    border-color: #374151;
+    color: white;
+  }
+
+  .separatorMenu {
+    background-color: #1f2937;
+    border-color: #374151;
+  }
+
+  .separatorMenuItem:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .addSeparatorButton {
+    border-color: #374151;
+    color: #9ca3af;
+  }
+
+  .addSeparatorButton:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+  }
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.separatorContainer.new {
+  animation: slideIn 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .separatorContent {
+    margin-left: var(--sp-sm, 8px);
+  }
+
+  .emptySeparator {
+    padding: var(--sp-md, 16px) var(--sp-sm, 8px);
+  }
+}
