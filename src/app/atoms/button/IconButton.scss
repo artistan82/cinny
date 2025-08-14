@@ -34,7 +34,10 @@
   @include state.hover(var(--bg-primary-hover));
   @include focus(var(--bg-primary-hover));
   @include state.active(var(--bg-primary-active));
+
+  & {
   background-color: var(--bg-primary);
+  }
 }
 .ic-btn-positive {
   @include color(var(--ic-positive-normal));
