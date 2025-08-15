@@ -1,4 +1,4 @@
-import React, { RefObject, useEffect, useRef, useState } from 'react';
+import React, { RefObject, useEffect, useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import classNames from 'classnames';
 import { Box, Icon, Icons, as } from 'folds';
@@ -33,7 +33,7 @@ export const useDraggableItem = (
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
-  }));
+  }), [item.roomId, item.parentId, onDragging]);
 
   useEffect(() => {
     if (dragHandleRef?.current) {
@@ -42,7 +42,7 @@ export const useDraggableItem = (
     if (targetRef.current) {
       preview(targetRef.current);
     }
-  }, [drag, preview, targetRef, dragHandleRef]);
+  }, [drag, preview, targetRef, dragHandleRef, item.roomId]);
 
   return isDragging;
 };
@@ -89,7 +89,7 @@ export function AfterItemDropTarget({
       isOver: !!monitor.isOver(),
       canDrop: !!monitor.canDrop(),
     }),
-  }));
+  }), [item.roomId, nextRoomId, canDrop, onDrop]);
 
   drop(ref);
 

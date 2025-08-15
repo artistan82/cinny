@@ -1,4 +1,4 @@
-import React, { MouseEventHandler, useCallback, useMemo, useRef, useState } from 'react';
+import React, { MouseEventHandler, useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { Box, Chip, Icon, IconButton, Icons, Line, Scroll, Spinner, Text, config } from 'folds';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAtom, useAtomValue } from 'jotai';
@@ -40,7 +40,7 @@ import { allRoomsAtom } from '../../state/room-list/roomList';
 import { getCanonicalAliasOrRoomId, rateLimitedActions } from '../../utils/matrix';
 import { getSpaceRoomPath } from '../../pages/pathUtils';
 import { StateEvent } from '../../../types/matrix/room';
-import { CanDropCallback } from './DnD';
+import { CanDropCallback, DropContainerData } from './DnD';
 import { ASCIILexicalTable, orderKeys } from '../../utils/ASCIILexicalTable';
 import { getStateEvent } from '../../utils/room';
 import { useClosedLobbyCategoriesAtom } from '../../state/hooks/closedLobbyCategories';
@@ -199,15 +199,54 @@ export function Lobby() {
       (childId) =>
         closedCategories.has(makeLobbyCategoryId(space.roomId, childId)) ||
         (draggingItem ? 'space' in draggingItem : false),
-      [closedCategories, space.roomId, draggingItem]
+      [closedCategories, draggingItem, space]
     )
   );
 
+  const handleCategoryClick = useCategoryHandler(
+    setClosedCategories,
+    (categoryId) => closedCategories.has(categoryId)
+  );
+
+  const openedCategories = useMemo(() => {
+    const opened = new Set<string>();
+    hierarchy.forEach((item) => {
+      const categoryId = makeLobbyCategoryId(space.roomId, item.space.roomId);
+      if (!closedCategories.has(categoryId)) {
+        opened.add(item.space.roomId);
+      }
+    });
+    return opened;
+  }, [hierarchy, closedCategories, space.roomId]);
+
+  const handleOpenRoom: MouseEventHandler<HTMLButtonElement> = useCallback(
+    (evt) => {
+      const roomId = evt.currentTarget.getAttribute('data-room-id');
+      if (!roomId) return;
+      const alias = getCanonicalAliasOrRoomId(mx, roomId);
+      navigate(getSpaceRoomPath(getCanonicalAliasOrRoomId(mx, space.roomId), alias));
+    },
+    [mx, navigate, space]
+  );
+
+  const togglePinToSidebar = useCallback(
+    (roomId: string) => {
+      const currentItems = sidebarItems;
+
+      const newItems = sidebarSpaces.has(roomId)
+        ? sidebarItemWithout(currentItems, roomId)
+        : [...currentItems, roomId];
+
+      mx.setAccountData(AccountDataEvent.CinnySpaces, makeCinnySpacesContent(newItems));
+    },
+    [mx, sidebarItems, sidebarSpaces]
+  );
+
+  const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: hierarchy.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 1,
-    overscan: 2,
+    estimateSize: useCallback(() => 38, []),
+    getScrollElement: useCallback(() => scrollRef.current, []),
     paddingStart: heroSectionHeight ?? 258,
   });
   const vItems = virtualizer.getVirtualItems();
@@ -375,6 +414,44 @@ export function Lobby() {
   const reorderingRoom = reorderRoomState.status === AsyncStatus.Loading;
   const reordering = reorderingRoom || reorderingSpace;
 
+  // Reset async states after successful operations to ensure clean state
+  useEffect(() => {
+    if (reorderSpaceState.status === AsyncStatus.Success || 
+        reorderSpaceState.status === AsyncStatus.Error) {
+      // Clear dragging state after operation completes
+      setDraggingItem(undefined);
+    }
+  }, [reorderSpaceState.status]);
+
+  useEffect(() => {
+    if (reorderRoomState.status === AsyncStatus.Success || 
+        reorderRoomState.status === AsyncStatus.Error) {
+      // Clear dragging state after operation completes
+      setDraggingItem(undefined);
+    }
+  }, [reorderRoomState.status]);
+
+  // Create unified drop handler
+  const handleDrop = useCallback(
+    async (item: HierarchyItem, container: DropContainerData) => {
+      try {
+        if ('space' in item) {
+          // Handle space drop
+          await reorderSpace(item, container.item);
+        } else {
+          // Handle room drop
+          await reorderRoom(item, container.item);
+        }
+      } catch (error) {
+        console.error('Failed to reorder item:', error);
+      } finally {
+        // Ensure dragging state is cleared even if reorder fails
+        setDraggingItem(undefined);
+      }
+    },
+    [reorderSpace, reorderRoom]
+  );
+
   const handleSpacesFound = useCallback(
     (sItems: IHierarchyRoom[]) => {
       setSpaceRooms({ type: 'PUT', roomIds: sItems.map((i) => i.room_id) });
@@ -388,99 +465,69 @@ export function Lobby() {
     [setSpaceRooms]
   );
 
-  const handleCategoryClick = useCategoryHandler(setClosedCategories, (categoryId) =>
-    closedCategories.has(categoryId)
-  );
-
-  const handleOpenRoom: MouseEventHandler<HTMLButtonElement> = (evt) => {
-    const rId = evt.currentTarget.getAttribute('data-room-id');
-    if (!rId) return;
-    const pSpaceIdOrAlias = getCanonicalAliasOrRoomId(mx, space.roomId);
-    navigate(getSpaceRoomPath(pSpaceIdOrAlias, getCanonicalAliasOrRoomId(mx, rId)));
-  };
-
-  const togglePinToSidebar = useCallback(
-    (rId: string) => {
-      const newItems = sidebarItemWithout(sidebarItems, rId);
-      if (!sidebarSpaces.has(rId)) {
-        newItems.push(rId);
-      }
-      const newSpacesContent = makeCinnySpacesContent(mx, newItems);
-      mx.setAccountData(AccountDataEvent.CinnySpaces as any, newSpacesContent as any);
-    },
-    [mx, sidebarItems, sidebarSpaces]
-  );
-
   return (
     <DndProvider backend={HTML5Backend}>
       <PowerLevelsContextProvider value={spacePowerLevels}>
-        <Box grow="Yes">
+        <Box grow="Yes" className="lobby-page">
           <Page>
             <LobbyHeader
-              showProfile={!onTop}
-              powerLevels={roomsPowerLevels.get(space.roomId) ?? {}}
+              space={space}
+              onTop={onTop}
+              showProfile={screenSize !== ScreenSize.Desktop || !isDrawer}
             />
             <Box style={{ position: 'relative' }} grow="Yes">
               <Scroll ref={scrollRef} hideTrack visibility="Hover">
-                <PageContent>
+                <ScrollTopContainer
+                  scrollRef={scrollRef}
+                  onVisibilityChange={setOnTop}
+                  anchorRef={heroSectionRef}
+                >
+                  <PageHeroSection ref={heroSectionRef}>
+                    <LobbyHero space={space} />
+                  </PageHeroSection>
+                </ScrollTopContainer>
+
+                <PageContent className="lobby-page">
                   <PageContentCenter>
-                    <ScrollTopContainer
-                      scrollRef={scrollRef}
-                      anchorRef={heroSectionRef}
-                      onVisibilityChange={setOnTop}
-                    >
-                      <IconButton
-                        onClick={() => virtualizer.scrollToOffset(0)}
-                        variant="SurfaceVariant"
-                        radii="Pill"
-                        outlined
-                        size="300"
-                        aria-label="Scroll to Top"
-                      >
-                        <Icon src={Icons.ChevronTop} size="300" />
-                      </IconButton>
-                    </ScrollTopContainer>
                     <div
+                      ref={parentRef}
                       style={{
                         position: 'relative',
                         height: virtualizer.getTotalSize(),
                       }}
                     >
-                      <PageHeroSection ref={heroSectionRef} style={{ paddingTop: 0 }}>
-                        <LobbyHero />
-                      </PageHeroSection>
                       {vItems.map((vItem) => {
                         const item = hierarchy[vItem.index];
-                        if (!item) return null;
-                        const nextSpaceId = hierarchy[vItem.index + 1]?.space.roomId;
+                        const { space: spaceItem, rooms } = item;
+                        const nextItem = hierarchy[vItem.index + 1];
+                        const nextSpace = nextItem?.space;
+                        const nextSpaceId = nextSpace?.roomId;
+                        const summary = spacesItems.get(spaceItem.roomId);
 
-                        const categoryId = makeLobbyCategoryId(space.roomId, item.space.roomId);
+                        const isOpen = openedCategories.has(spaceItem.roomId);
 
                         return (
                           <VirtualTile
                             virtualItem={vItem}
-                            style={{
-                              paddingTop: vItem.index === 0 ? 0 : config.space.S500,
-                            }}
+                            style={{ paddingTop: config.space.S300 }}
                             ref={virtualizer.measureElement}
-                            key={vItem.index}
+                            key={`${vItem.index}-${spaceItem.roomId}`}
                           >
                             <SpaceHierarchy
-                              spaceItem={item.space}
-                              summary={spacesItems.get(item.space.roomId)}
-                              roomItems={item.rooms}
+                              key={`${spaceItem.roomId}-${reordering ? 'reordering' : 'idle'}`}
+                              summary={summary}
+                              spaceItem={spaceItem}
+                              roomItems={isOpen ? rooms : undefined}
                               allJoinedRooms={allJoinedRooms}
                               mDirects={mDirects}
                               roomsPowerLevels={roomsPowerLevels}
-                              categoryId={categoryId}
-                              closed={
-                                closedCategories.has(categoryId) ||
-                                (draggingItem ? 'space' in draggingItem : false)
-                              }
+                              categoryId={makeLobbyCategoryId(space.roomId, spaceItem.roomId)}
+                              closed={!isOpen || (draggingItem ? 'space' in draggingItem : false)}
                               handleClose={handleCategoryClick}
                               draggingItem={draggingItem}
                               onDragging={setDraggingItem}
                               canDrop={canDrop}
+                              onDrop={handleDrop}
                               disabledReorder={reordering}
                               nextSpaceId={nextSpaceId}
                               getRoom={getRoom}
