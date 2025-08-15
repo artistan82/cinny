@@ -26,18 +26,8 @@ import {
 } from 'folds';
 import { useAtom, useAtomValue } from 'jotai';
 import { Room } from 'matrix-js-sdk';
-import {
-  draggable,
-  dropTargetForElements,
-  monitorForElements,
-} from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import {
-  attachInstruction,
-  extractInstruction,
-  Instruction,
-} from '@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item';
-import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element';
-import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import FocusTrap from 'focus-trap-react';
 import {
   useOrphanSpaces,
@@ -93,6 +83,11 @@ import { settingsAtom } from '../../../state/settings';
 import { useOpenSpaceSettings } from '../../../state/hooks/spaceSettings';
 import { useRoomCreators } from '../../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../../hooks/useRoomPermissions';
+
+const ItemTypes = {
+  SPACE: 'space',
+  FOLDER: 'folder',
+};
 
 type SpaceMenuProps = {
   room: Room;
@@ -212,171 +207,12 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(
     );
   }
 );
-
-type InstructionType = Instruction['type'];
-type FolderDraggable = {
-  folder: ISidebarFolder;
-  spaceId?: string;
-  open?: boolean;
-};
-type SidebarDraggable = string | FolderDraggable;
-
-const useDraggableItem = (
-  item: SidebarDraggable,
-  targetRef: RefObject<HTMLElement>,
-  onDragging: (item?: SidebarDraggable) => void,
-  dragHandleRef?: RefObject<HTMLElement>
-): boolean => {
-  const [dragging, setDragging] = useState(false);
-
-  useEffect(() => {
-    const target = targetRef.current;
-    const dragHandle = dragHandleRef?.current ?? undefined;
-
-    return !target
-      ? undefined
-      : draggable({
-          element: target,
-          dragHandle,
-          getInitialData: () => ({ item }),
-          onDragStart: () => {
-            setDragging(true);
-            onDragging?.(item);
-          },
-          onDrop: () => {
-            setDragging(false);
-            onDragging?.(undefined);
-          },
-        });
-  }, [targetRef, dragHandleRef, item, onDragging]);
-
-  return dragging;
-};
-
-const useDropTarget = (
-  item: SidebarDraggable,
-  targetRef: RefObject<HTMLElement>
-): Instruction | undefined => {
-  const [dropState, setDropState] = useState<Instruction>();
-
-  useEffect(() => {
-    const target = targetRef.current;
-    if (!target) return undefined;
-
-    return dropTargetForElements({
-      element: target,
-      canDrop: ({ source }) => {
-        const dragItem = source.data.item as SidebarDraggable;
-        return dragItem !== item;
-      },
-      getData: ({ input, element }) => {
-        const block: Instruction['type'][] = ['reparent'];
-        if (typeof item === 'object' && item.spaceId) block.push('make-child');
-
-        const insData = attachInstruction(
-          {},
-          {
-            input,
-            element,
-            currentLevel: 0,
-            indentPerLevel: 0,
-            mode: 'standard',
-            block,
-          }
-        );
-
-        const instruction: Instruction | null = extractInstruction(insData);
-        setDropState(instruction ?? undefined);
-
-        return {
-          item,
-          instructionType: instruction ? instruction.type : undefined,
-        };
-      },
-      onDragLeave: () => setDropState(undefined),
-      onDrop: () => setDropState(undefined),
-    });
-  }, [item, targetRef]);
-
-  return dropState;
-};
-
-function useDropTargetInstruction<T extends InstructionType>(
-  item: SidebarDraggable,
-  targetRef: RefObject<HTMLElement>,
-  instructionType: T
-): T | undefined {
-  const [dropState, setDropState] = useState<T>();
-
-  useEffect(() => {
-    const target = targetRef.current;
-    if (!target) return undefined;
-
-    return dropTargetForElements({
-      element: target,
-      canDrop: ({ source }) => {
-        const dragItem = source.data.item as SidebarDraggable;
-        return dragItem !== item;
-      },
-      getData: () => {
-        setDropState(instructionType);
-
-        return {
-          item,
-          instructionType,
-        };
-      },
-      onDragLeave: () => setDropState(undefined),
-      onDrop: () => setDropState(undefined),
-    });
-  }, [item, targetRef, instructionType]);
-
-  return dropState;
-}
-
-const useDnDMonitor = (
-  scrollRef: RefObject<HTMLElement>,
-  onDragging: (dragItem?: SidebarDraggable) => void,
-  onReorder: (
-    draggable: SidebarDraggable,
-    container: SidebarDraggable,
-    instruction: InstructionType
-  ) => void
-) => {
-  useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) {
-      throw Error('Scroll element ref not configured');
-    }
-
-    return combine(
-      monitorForElements({
-        onDrop: ({ source, location }) => {
-          onDragging(undefined);
-          const { dropTargets } = location.current;
-          if (dropTargets.length === 0) return;
-          const item = source.data.item as SidebarDraggable;
-          const containerItem = dropTargets[0].data.item as SidebarDraggable;
-          const instructionType = dropTargets[0].data.instructionType as
-            | InstructionType
-            | undefined;
-          if (!instructionType) return;
-          onReorder(item, containerItem, instructionType);
-        },
-      }),
-      autoScrollForElements({
-        element: scrollElement,
-      })
-    );
-  }, [scrollRef, onDragging, onReorder]);
-};
-
 type SpaceTabProps = {
   space: Room;
   selected: boolean;
   onClick: MouseEventHandler<HTMLButtonElement>;
   folder?: ISidebarFolder;
-  onDragging: (dragItem?: SidebarDraggable) => void;
+  onDrop: (item: any, instruction: string) => void;
   disabled?: boolean;
   onUnpin?: (roomId: string) => void;
 };
@@ -385,28 +221,60 @@ function SpaceTab({
   selected,
   onClick,
   folder,
-  onDragging,
+  onDrop,
   disabled,
   onUnpin,
 }: SpaceTabProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
-  const targetRef = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
-  const spaceDraggable: SidebarDraggable = useMemo(
-    () =>
-      folder
-        ? {
-            folder,
-            spaceId: space.roomId,
-          }
-        : space.roomId,
-    [folder, space]
-  );
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.SPACE,
+    item: { id: space.roomId, folder },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }));
 
-  useDraggableItem(spaceDraggable, targetRef, onDragging);
-  const dropState = useDropTarget(spaceDraggable, targetRef);
-  const dropType = dropState?.type;
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
+    accept: [ItemTypes.SPACE, ItemTypes.FOLDER],
+    drop: (item: any, monitor) => {
+      const instruction = monitor.getDropResult()?.instruction ?? 'reorder-below';
+      onDrop(item, instruction);
+    },
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+      canDrop: !!monitor.canDrop(),
+    }),
+    hover: (item, monitor) => {
+      if (!ref.current) {
+        return;
+      }
+      const hoverBoundingRect = ref.current.getBoundingClientRect();
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+      const clientOffset = monitor.getClientOffset();
+      const hoverClientY = clientOffset.y - hoverBoundingRect.top;
+
+      if (hoverClientY < hoverMiddleY) {
+        // @ts-ignore
+        monitor.internalMonitor.store.dispatch({
+          type: 'dnd-core/DROP',
+          payload: {
+            instruction: 'reorder-above',
+          },
+        });
+      } else {
+        // @ts-ignore
+        monitor.internalMonitor.store.dispatch({
+          type: 'dnd-core/DROP',
+          payload: {
+            instruction: 'reorder-below',
+          },
+        });
+      }
+    },
+  }));
 
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
 
@@ -419,17 +287,20 @@ function SpaceTab({
     });
   };
 
+  drag(drop(ref));
+
   return (
     <RoomUnreadProvider roomId={space.roomId}>
       {(unread) => (
         <SidebarItem
           active={selected}
-          ref={targetRef}
-          aria-disabled={disabled}
-          data-drop-child={dropType === 'make-child'}
-          data-drop-above={dropType === 'reorder-above'}
-          data-drop-below={dropType === 'reorder-below'}
+          ref={ref}
+          aria-disabled={disabled || isDragging}
+          data-drop-child={isOver && canDrop && !folder}
+          data-drop-above={isOver && canDrop}
+          data-drop-below={isOver && canDrop}
           data-inside-folder={!!folder}
+          style={{ opacity: isDragging ? 0.5 : 1 }}
         >
           <SidebarItemTooltip tooltip={disabled ? undefined : space.name}>
             {(triggerRef) => (
@@ -495,28 +366,33 @@ type OpenedSpaceFolderProps = {
   children?: ReactNode;
 };
 function OpenedSpaceFolder({ folder, onClose, children }: OpenedSpaceFolderProps) {
-  const aboveTargetRef = useRef<HTMLDivElement>(null);
-  const belowTargetRef = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
-  const spaceDraggable: SidebarDraggable = useMemo(() => ({ folder, open: true }), [folder]);
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
+    accept: [ItemTypes.SPACE, ItemTypes.FOLDER],
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+      canDrop: !!monitor.canDrop(),
+    }),
+  }));
 
-  const orderAbove = useDropTargetInstruction(spaceDraggable, aboveTargetRef, 'reorder-above');
-  const orderBelow = useDropTargetInstruction(spaceDraggable, belowTargetRef, 'reorder-below');
+  drop(ref);
 
   return (
     <SidebarFolder
+      ref={ref}
       state="Open"
-      data-drop-above={orderAbove === 'reorder-above'}
-      data-drop-below={orderBelow === 'reorder-below'}
+      data-drop-above={isOver && canDrop}
+      data-drop-below={isOver && canDrop}
     >
-      <SidebarFolderDropTarget ref={aboveTargetRef} position="Top" />
+      <SidebarFolderDropTarget position="Top" />
       <SidebarAvatar size="300">
         <IconButton data-id={folder.id} size="300" variant="Background" onClick={onClose}>
           <Icon size="400" src={Icons.ChevronTop} filled />
         </IconButton>
       </SidebarAvatar>
       {children}
-      <SidebarFolderDropTarget ref={belowTargetRef} position="Bottom" />
+      <SidebarFolderDropTarget position="Bottom" />
     </SidebarFolder>
   );
 }
@@ -525,24 +401,41 @@ type ClosedSpaceFolderProps = {
   folder: ISidebarFolder;
   selected: boolean;
   onOpen: MouseEventHandler<HTMLButtonElement>;
-  onDragging: (dragItem?: SidebarDraggable) => void;
+  onDrop: (item: any, instruction: string) => void;
   disabled?: boolean;
 };
 function ClosedSpaceFolder({
   folder,
   selected,
   onOpen,
-  onDragging,
+  onDrop,
   disabled,
 }: ClosedSpaceFolderProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
-  const handlerRef = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
-  const spaceDraggable: FolderDraggable = useMemo(() => ({ folder }), [folder]);
-  useDraggableItem(spaceDraggable, handlerRef, onDragging);
-  const dropState = useDropTarget(spaceDraggable, handlerRef);
-  const dropType = dropState?.type;
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.FOLDER,
+    item: { id: folder.id, folder },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }));
+
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
+    accept: [ItemTypes.SPACE, ItemTypes.FOLDER],
+    drop: (item: any, monitor) => {
+      const instruction = monitor.getDropResult()?.instruction ?? 'make-child';
+      onDrop(item, instruction);
+    },
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+      canDrop: !!monitor.canDrop(),
+    }),
+  }));
+
+  drag(drop(ref));
 
   const tooltipName =
     folder.name ?? folder.content.map((i) => mx.getRoom(i)?.name ?? '').join(', ') ?? 'Unnamed';
@@ -552,11 +445,12 @@ function ClosedSpaceFolder({
       {(unread) => (
         <SidebarItem
           active={selected}
-          ref={handlerRef}
-          aria-disabled={disabled}
-          data-drop-child={dropType === 'make-child'}
-          data-drop-above={dropType === 'reorder-above'}
-          data-drop-below={dropType === 'reorder-below'}
+          ref={ref}
+          aria-disabled={disabled || isDragging}
+          data-drop-child={isOver && canDrop}
+          data-drop-above={isOver && canDrop}
+          data-drop-below={isOver && canDrop}
+          style={{ opacity: isDragging ? 0.5 : 1 }}
         >
           <SidebarItemTooltip tooltip={disabled ? undefined : tooltipName}>
             {(tooltipRef) => (
@@ -606,139 +500,134 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
   const [sidebarItems, localEchoSidebarItem] = useSidebarItems(orphanSpaces);
   const navToActivePath = useAtomValue(useNavToActivePathAtom());
   const [openedFolder, setOpenedFolder] = useAtom(useOpenedSidebarFolderAtom());
-  const [draggingItem, setDraggingItem] = useState<SidebarDraggable>();
 
-  useDnDMonitor(
-    scrollRef,
-    setDraggingItem,
-    useCallback(
-      (item, containerItem, instructionType) => {
-        const newItems: SidebarItems = [];
+  const handleDrop = useCallback(
+    (item, containerItem, instructionType) => {
+      const newItems: SidebarItems = [];
 
-        const matchDest = (sI: TSidebarItem, dI: SidebarDraggable): boolean => {
-          if (typeof sI === 'string' && typeof dI === 'string') {
-            return sI === dI;
-          }
-          if (typeof sI === 'object' && typeof dI === 'object') {
-            return sI.id === dI.folder.id;
-          }
-          return false;
-        };
-        const itemAsFolderContent = (i: SidebarDraggable): string[] => {
-          if (typeof i === 'string') {
-            return [i];
-          }
-          if (i.spaceId) {
-            return [i.spaceId];
-          }
-          return [...i.folder.content];
-        };
+      const matchDest = (sI: TSidebarItem, dI: any): boolean => {
+        if (typeof sI === 'string' && typeof dI.id === 'string') {
+          return sI === dI.id;
+        }
+        if (typeof sI === 'object' && typeof dI.folder === 'object') {
+          return sI.id === dI.folder.id;
+        }
+        return false;
+      };
+      const itemAsFolderContent = (i: any): string[] => {
+        if (typeof i.id === 'string' && !i.folder) {
+          return [i.id];
+        }
+        if (i.folder) {
+          return [i.id];
+        }
+        return [...i.folder.content];
+      };
 
-        sidebarItems.forEach((i) => {
-          const sameFolders =
-            typeof item === 'object' &&
-            typeof containerItem === 'object' &&
-            item.folder.id === containerItem.folder.id;
+      sidebarItems.forEach((i) => {
+        const sameFolders =
+          typeof item.folder === 'object' &&
+          typeof containerItem.folder === 'object' &&
+          item.folder.id === containerItem.folder.id;
 
-          // remove draggable space from current position or folder
-          if (!sameFolders && matchDest(i, item)) {
-            if (typeof item === 'object' && item.spaceId) {
-              const folderContent = item.folder.content.filter((s) => s !== item.spaceId);
-              if (folderContent.length === 0) {
-                // remove open state from local storage
-                setOpenedFolder({ type: 'DELETE', id: item.folder.id });
-                return;
-              }
-              newItems.push({
-                ...item.folder,
-                content: folderContent,
-              });
-            }
-            return;
-          }
-          if (matchDest(i, containerItem)) {
-            // we can make child only if
-            // container item is space or closed folder
-            if (instructionType === 'make-child') {
-              const child: string[] = itemAsFolderContent(item);
-              if (typeof containerItem === 'string') {
-                const folder: ISidebarFolder = {
-                  id: randomStr(),
-                  content: [containerItem].concat(child),
-                };
-                newItems.push(folder);
-                return;
-              }
-              newItems.push({
-                ...containerItem.folder,
-                content: containerItem.folder.content.concat(child),
-              });
+        // remove draggable space from current position or folder
+        if (!sameFolders && matchDest(i, item)) {
+          if (typeof item.folder === 'object' && item.id) {
+            const folderContent = item.folder.content.filter((s) => s !== item.id);
+            if (folderContent.length === 0) {
+              // remove open state from local storage
+              setOpenedFolder({ type: 'DELETE', id: item.folder.id });
               return;
             }
-
-            // drop inside opened folder
-            // or reordering inside same folder
-            if (typeof containerItem === 'object' && containerItem.spaceId) {
-              const child = itemAsFolderContent(item);
-              const newContent: string[] = [];
-              containerItem.folder.content
-                .filter((sId) => !child.includes(sId))
-                .forEach((sId) => {
-                  if (sId === containerItem.spaceId) {
-                    if (instructionType === 'reorder-below') {
-                      newContent.push(sId, ...child);
-                    }
-                    if (instructionType === 'reorder-above') {
-                      newContent.push(...child, sId);
-                    }
-                    return;
-                  }
-                  newContent.push(sId);
-                });
-              const folder = {
-                ...containerItem.folder,
-                content: newContent,
+            newItems.push({
+              ...item.folder,
+              content: folderContent,
+            });
+          }
+          return;
+        }
+        if (matchDest(i, containerItem)) {
+          // we can make child only if
+          // container item is space or closed folder
+          if (instructionType === 'make-child') {
+            const child: string[] = itemAsFolderContent(item);
+            if (typeof containerItem.id === 'string') {
+              const folder: ISidebarFolder = {
+                id: randomStr(),
+                content: [containerItem.id].concat(child),
               };
-
               newItems.push(folder);
               return;
             }
-
-            // drop above or below space or closed/opened folder
-            if (typeof item === 'string') {
-              if (instructionType === 'reorder-below') newItems.push(i);
-              newItems.push(item);
-              if (instructionType === 'reorder-above') newItems.push(i);
-            } else if (item.spaceId) {
-              if (instructionType === 'reorder-above') {
-                newItems.push(item.spaceId);
-              }
-              if (sameFolders && typeof i === 'object') {
-                // remove from folder if placing around itself
-                const newI = { ...i, content: i.content.filter((sId) => sId !== item.spaceId) };
-                if (newI.content.length > 0) newItems.push(newI);
-              } else {
-                newItems.push(i);
-              }
-              if (instructionType === 'reorder-below') {
-                newItems.push(item.spaceId);
-              }
-            } else {
-              if (instructionType === 'reorder-below') newItems.push(i);
-              newItems.push(item.folder);
-              if (instructionType === 'reorder-above') newItems.push(i);
-            }
+            newItems.push({
+              ...containerItem.folder,
+              content: containerItem.folder.content.concat(child),
+            });
             return;
           }
-          newItems.push(i);
-        });
 
-        const newSpacesContent = makeCinnySpacesContent(mx, newItems);
-        localEchoSidebarItem(parseSidebar(mx, orphanSpaces, newSpacesContent));
-        mx.setAccountData(AccountDataEvent.CinnySpaces, newSpacesContent);
-      },
-      [mx, sidebarItems, setOpenedFolder, localEchoSidebarItem, orphanSpaces]
-    )
+          // drop inside opened folder
+          // or reordering inside same folder
+          if (typeof containerItem.folder === 'object' && containerItem.id) {
+            const child = itemAsFolderContent(item);
+            const newContent: string[] = [];
+            containerItem.folder.content
+              .filter((sId) => !child.includes(sId))
+              .forEach((sId) => {
+                if (sId === containerItem.id) {
+                  if (instructionType === 'reorder-below') {
+                    newContent.push(sId, ...child);
+                  }
+                  if (instructionType === 'reorder-above') {
+                    newContent.push(...child, sId);
+                  }
+                  return;
+                }
+                newContent.push(sId);
+              });
+            const folder = {
+              ...containerItem.folder,
+              content: newContent,
+            };
+
+            newItems.push(folder);
+            return;
+          }
+
+          // drop above or below space or closed/opened folder
+          if (typeof item.id === 'string' && !item.folder) {
+            if (instructionType === 'reorder-below') newItems.push(i);
+            newItems.push(item.id);
+            if (instructionType === 'reorder-above') newItems.push(i);
+          } else if (item.id) {
+            if (instructionType === 'reorder-above') {
+              newItems.push(item.id);
+            }
+            if (sameFolders && typeof i === 'object') {
+              // remove from folder if placing around itself
+              const newI = { ...i, content: i.content.filter((sId) => sId !== item.id) };
+              if (newI.content.length > 0) newItems.push(newI);
+            } else {
+              newItems.push(i);
+            }
+            if (instructionType === 'reorder-below') {
+              newItems.push(item.id);
+            }
+          } else {
+            if (instructionType === 'reorder-below') newItems.push(i);
+            newItems.push(item.folder);
+            if (instructionType === 'reorder-above') newItems.push(i);
+          }
+          return;
+        }
+        newItems.push(i);
+      });
+
+      const newSpacesContent = makeCinnySpacesContent(mx, newItems);
+      localEchoSidebarItem(parseSidebar(mx, orphanSpaces, newSpacesContent));
+      mx.setAccountData(AccountDataEvent.CinnySpaces, newSpacesContent);
+    },
+    [mx, sidebarItems, setOpenedFolder, localEchoSidebarItem, orphanSpaces]
   );
 
   const selectedSpaceId = useSelectedSpace();
@@ -788,7 +677,7 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
 
   if (sidebarItems.length === 0) return null;
   return (
-    <>
+    <DndProvider backend={HTML5Backend}>
       <SidebarStackSeparator />
       <SidebarStack>
         {sidebarItems.map((item) => {
@@ -806,11 +695,8 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
                         selected={space.roomId === selectedSpaceId}
                         onClick={handleSpaceClick}
                         folder={item}
-                        onDragging={setDraggingItem}
-                        disabled={
-                          typeof draggingItem === 'object'
-                            ? draggingItem.spaceId === space.roomId
-                            : false
+                        onDrop={(draggedItem, instruction) =>
+                          handleDrop(draggedItem, { id: space.roomId, folder: item }, instruction)
                         }
                         onUnpin={orphanSpaces.includes(space.roomId) ? undefined : handleUnpin}
                       />
@@ -826,9 +712,8 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
                 folder={item}
                 selected={!!selectedSpaceId && item.content.includes(selectedSpaceId)}
                 onOpen={handleFolderToggle}
-                onDragging={setDraggingItem}
-                disabled={
-                  typeof draggingItem === 'object' ? draggingItem.folder.id === item.id : false
+                onDrop={(draggedItem, instruction) =>
+                  handleDrop(draggedItem, { folder: item }, instruction)
                 }
               />
             );
@@ -843,13 +728,14 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
               space={space}
               selected={space.roomId === selectedSpaceId}
               onClick={handleSpaceClick}
-              onDragging={setDraggingItem}
-              disabled={typeof draggingItem === 'string' ? draggingItem === space.roomId : false}
+              onDrop={(draggedItem, instruction) =>
+                handleDrop(draggedItem, { id: space.roomId }, instruction)
+              }
               onUnpin={orphanSpaces.includes(space.roomId) ? undefined : handleUnpin}
             />
           );
         })}
       </SidebarStack>
-    </>
+    </DndProvider>
   );
 }

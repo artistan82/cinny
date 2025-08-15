@@ -1,15 +1,13 @@
 import React, { RefObject, useEffect, useRef, useState } from 'react';
-import {
-  dropTargetForElements,
-  draggable,
-  monitorForElements,
-} from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element';
-import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
+import { useDrag, useDrop } from 'react-dnd';
 import classNames from 'classnames';
 import { Box, Icon, Icons, as } from 'folds';
 import { HierarchyItem } from '../../hooks/useSpaceHierarchy';
 import * as css from './DnD.css';
+
+const ItemTypes = {
+  HIERARCHY_ITEM: 'hierarchy_item',
+};
 
 export type DropContainerData = {
   item: HierarchyItem;
@@ -23,30 +21,30 @@ export const useDraggableItem = (
   onDragging: (item?: HierarchyItem) => void,
   dragHandleRef?: RefObject<HTMLElement>
 ): boolean => {
-  const [dragging, setDragging] = useState(false);
+  const [{ isDragging }, drag, preview] = useDrag(() => ({
+    type: ItemTypes.HIERARCHY_ITEM,
+    item: () => {
+      onDragging(item);
+      return item;
+    },
+    end: () => {
+      onDragging(undefined);
+    },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }));
 
   useEffect(() => {
-    const target = targetRef.current;
-    const dragHandle = dragHandleRef?.current ?? undefined;
+    if (dragHandleRef?.current) {
+      drag(dragHandleRef.current);
+    }
+    if (targetRef.current) {
+      preview(targetRef.current);
+    }
+  }, [drag, preview, targetRef, dragHandleRef]);
 
-    return !target
-      ? undefined
-      : draggable({
-          element: target,
-          dragHandle,
-          getInitialData: () => item,
-          onDragStart: () => {
-            setDragging(true);
-            onDragging(item);
-          },
-          onDrop: () => {
-            setDragging(false);
-            onDragging(undefined);
-          },
-        });
-  }, [targetRef, dragHandleRef, item, onDragging]);
-
-  return dragging;
+  return isDragging;
 };
 
 export const ItemDraggableTarget = as<'div'>(({ className, ...props }, ref) => (
@@ -66,81 +64,43 @@ type AfterItemDropTargetProps = {
   afterSpace?: boolean;
   nextRoomId?: string;
   canDrop: CanDropCallback;
+  onDrop: (item: HierarchyItem, container: DropContainerData) => void;
 };
 export function AfterItemDropTarget({
   item,
   afterSpace,
   nextRoomId,
   canDrop,
+  onDrop,
 }: AfterItemDropTargetProps) {
-  const targetRef = useRef<HTMLDivElement>(null);
-  const [dropState, setDropState] = useState<'idle' | 'allow' | 'not-allow'>('idle');
+  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const target = targetRef.current;
-    if (!target) {
-      throw Error('drop target ref is not set properly');
-    }
+  const [{ isOver, canDrop: canDropItem }, drop] = useDrop<
+    HierarchyItem,
+    void,
+    { isOver: boolean; canDrop: boolean }
+  >(() => ({
+    accept: ItemTypes.HIERARCHY_ITEM,
+    drop: (draggedItem) => {
+      onDrop(draggedItem, { item, nextRoomId });
+    },
+    canDrop: (draggedItem) => canDrop(draggedItem, { item, nextRoomId }),
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+      canDrop: !!monitor.canDrop(),
+    }),
+  }));
 
-    return dropTargetForElements({
-      element: target,
-      getData: () => {
-        const container: DropContainerData = {
-          item,
-          nextRoomId,
-        };
-        return container;
-      },
-      onDragEnter: ({ source }) => {
-        if (
-          canDrop(source.data as HierarchyItem, {
-            item,
-            nextRoomId,
-          })
-        ) {
-          setDropState('allow');
-        } else {
-          setDropState('not-allow');
-        }
-      },
-      onDragLeave: () => setDropState('idle'),
-      onDrop: () => setDropState('idle'),
-    });
-  }, [item, nextRoomId, canDrop]);
+  drop(ref);
+
+  const dropState = isOver ? (canDropItem ? 'allow' : 'not-allow') : 'idle';
 
   return (
     <div
       className={afterSpace ? css.AfterSpaceItemDropTarget : css.AfterRoomItemDropTarget}
       data-hover={dropState !== 'idle'}
       data-error={dropState === 'not-allow'}
-      ref={targetRef}
+      ref={ref}
     />
   );
 }
-
-export const useDnDMonitor = (
-  scrollRef: RefObject<HTMLElement>,
-  onDragging: (item?: HierarchyItem) => void,
-  onReorder: (item: HierarchyItem, container: DropContainerData) => void
-) => {
-  useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) {
-      throw Error('Scroll element ref not configured');
-    }
-
-    return combine(
-      monitorForElements({
-        onDrop: ({ source, location }) => {
-          onDragging(undefined);
-          const { dropTargets } = location.current;
-          if (dropTargets.length === 0) return;
-          onReorder(source.data as HierarchyItem, dropTargets[0].data as DropContainerData);
-        },
-      }),
-      autoScrollForElements({
-        element: scrollElement,
-      })
-    );
-  }, [scrollRef, onDragging, onReorder]);
-};
