@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, as } from 'folds';
+import { as } from 'folds';
 import classNames from 'classnames';
 import * as css from './layout.css';
 
@@ -29,14 +29,36 @@ export const UsernameBold = as<'b'>(({ as: AsUsernameBold = 'b', className, ...p
 ));
 
 export const MessageTextBody = as<'div', css.MessageTextBodyVariants & { notice?: boolean }>(
-  ({ as: asComp = 'div', className, preWrap, jumboEmoji, emote, notice, ...props }, ref) => (
-    <Text
-      as={asComp}
-      size="T400"
-      priority={notice ? '300' : '400'}
-      className={classNames(css.MessageTextBody({ preWrap, jumboEmoji, emote }), className)}
-      {...props}
-      ref={ref}
-    />
-  )
+  ({ as: asComp = 'div', className, preWrap, jumboEmoji, emote, notice, ...props }, ref) => {
+    const Component = asComp;
+    return (
+      <Component
+        className={classNames(
+          'text',
+          !jumboEmoji && 'text-b1',
+          notice ? 'text-medium' : 'text-normal',
+          css.MessageTextBody({ preWrap, jumboEmoji, emote }),
+          className
+        )}
+        style={{
+          color: notice ? 'var(--tc-surface-normal-low)' : 'var(--tc-surface-normal)',
+          ...(jumboEmoji && { fontSize: '24px' }),
+        }}
+        css={`
+          img.emoji,
+          img[data-mx-emoticon] {
+            height: ${jumboEmoji ? '24px' : 'calc(var(--lh-b1) - 0.25rem)'} !important;
+            margin: 0 !important;
+            margin-right: 2px !important;
+            padding: 0 !important;
+            position: relative;
+            top: -0.1rem;
+            vertical-align: middle;
+          }
+        `}
+        {...props}
+        ref={ref}
+      />
+    );
+  }
 );

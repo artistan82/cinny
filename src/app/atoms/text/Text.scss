@@ -5,7 +5,7 @@
 
   & img.emoji,
   & img[data-mx-emoticon] {
-    height: calc(var(--lh-#{$type}) - .25rem);
+    height: inherit;
   }
 }
 
