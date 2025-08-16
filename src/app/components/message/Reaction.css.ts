@@ -17,7 +17,7 @@ export const Reaction = style([
       [ContainerLine]: color.SurfaceVariant.ContainerLine,
       [OnContainer]: color.SurfaceVariant.OnContainer,
     },
-    padding: `${toRem(2)} ${config.space.S200} ${toRem(2)} ${config.space.S100}`,
+    padding: `${toRem(3)} ${config.space.S200} ${toRem(3)} ${config.space.S100}`,
     backgroundColor: Container,
     border: `${config.borderWidth.B300} solid ${ContainerLine}`,
     borderRadius: config.radii.R300,
@@ -60,14 +60,15 @@ export const ReactionText = style([
     maxWidth: toRem(150),
     display: 'inline-flex',
     alignItems: 'center',
-    lineHeight: toRem(20),
+    lineHeight: toRem(24),
+    fontSize: toRem(18),
   },
 ]);
 
 export const ReactionImg = style([
   DefaultReset,
   {
-    height: '1em',
+    height: '1.182em',
     minWidth: 0,
     maxWidth: toRem(150),
     objectFit: 'contain',
