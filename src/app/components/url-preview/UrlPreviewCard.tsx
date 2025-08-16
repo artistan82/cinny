@@ -19,7 +19,7 @@ import {
 import { tryDecodeURIComponent } from '../../utils/dom';
 import { mxcUrlToHttp } from '../../utils/matrix';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
-import * as css from './UrlPreview.css';
+import * as css from './UrlPreviewCard.css';
 
 const MAX_THUMBNAIL_SIZE = 600;
 

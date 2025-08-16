@@ -4,12 +4,33 @@ import { AsyncStatus, useAsyncCallbackValue } from '../hooks/useAsyncCallback';
 import { useMatrixClient } from '../hooks/useMatrixClient';
 import { MediaConfig } from '../hooks/useMediaConfig';
 import { promiseFulfilledResult } from '../utils/common';
+import { ErrorCode } from '../cs-errorcode';
 
 export type ServerConfigs = {
   capabilities?: Capabilities;
   mediaConfig?: MediaConfig;
   authMetadata?: ValidatedAuthMetadata;
 };
+
+async function safeGetAuthMetadata(mx: any): Promise<any> {
+  try {
+    return await mx.getAuthMetadata();
+  } catch (error: any) {
+    if (
+      error?.errcode === ErrorCode.M_UNRECOGNIZED ||
+      error?.errcode === 'M_UNRECOGNIZED' ||
+      error?.httpStatus === 404 ||
+      error?.status === 404 ||
+      (error?.message && error.message.includes('Unrecognized request'))
+    ) {
+      console.debug('Server does not support OAuth 2.0 authentication metadata (MSC2965)');
+      return null;
+    }
+    
+    console.warn('Unexpected error fetching auth metadata:', error);
+    return null;
+  }
+}
 
 type ServerConfigsLoaderProps = {
   children: (configs: ServerConfigs) => ReactNode;
@@ -23,7 +44,7 @@ export function ServerConfigsLoader({ children }: ServerConfigsLoaderProps) {
       const result = await Promise.allSettled([
         mx.getCapabilities(),
         mx.getMediaConfig(),
-        mx.getAuthMetadata(),
+        safeGetAuthMetadata(mx),
       ]);
 
       const capabilities = promiseFulfilledResult(result[0]);
@@ -31,10 +52,13 @@ export function ServerConfigsLoader({ children }: ServerConfigsLoaderProps) {
       const authMetadata = promiseFulfilledResult(result[2]);
       let validatedAuthMetadata: ValidatedAuthMetadata | undefined;
 
-      try {
-        validatedAuthMetadata = validateAuthMetadata(authMetadata);
-      } catch (e) {
-        console.error(e);
+      if (authMetadata) {
+        try {
+          validatedAuthMetadata = validateAuthMetadata(authMetadata);
+        } catch (e) {
+          console.warn('Failed to validate auth metadata:', e);
+          validatedAuthMetadata = undefined;
+        }
       }
 
       return {
