@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IPreviewUrlResponse } from 'matrix-js-sdk';
 import { Box, Icon, IconButton, Icons, Scroll, Spinner, as, config } from 'folds';
-import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
+import { AsyncStatus, useAsyncCallback, AsyncState } from '../../hooks/useAsyncCallback';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import {
   UrlPreview,
@@ -27,17 +27,41 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
   ({ url, ts, ...props }, ref) => {
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
-    const [previewStatus, loadPreview] = useAsyncCallback(
-      useCallback(() => mx.getUrlPreview(url, ts), [url, ts, mx])
-    );
+    
+    const [previewStatus, setPreviewStatus] = useState<AsyncState<IPreviewUrlResponse, unknown>>({
+      status: AsyncStatus.Idle,
+    });
+
+    const loadPreviewSafely = useCallback(async () => {
+      setPreviewStatus({ status: AsyncStatus.Loading });
+      
+      try {
+        const data = await mx.getUrlPreview(url, ts);
+        setPreviewStatus({ 
+          status: AsyncStatus.Success, 
+          data 
+        });
+      } catch (error) {
+        // Log the error for debugging but don't let it crash the app
+        console.warn('Failed to load URL preview for:', url, error);
+        
+        // If it's a network error, we can optionally log more details
+        if (error instanceof TypeError && error.message.includes('NetworkError')) {
+          console.warn('Network error occurred while fetching URL preview. The URL might be invalid or unreachable:', url);
+        }
+        
+        setPreviewStatus({ 
+          status: AsyncStatus.Error, 
+          error 
+        });
+      }
+    }, [mx, url, ts]);
 
     useEffect(() => {
-      loadPreview();
-    }, [loadPreview]);
+      loadPreviewSafely();
+    }, [loadPreviewSafely]);
 
-    if (previewStatus.status === AsyncStatus.Error) return null;
-
-    // Extract preview data at the top level
+    // Extract preview data at the top level - do this BEFORE any early returns
     const previewData = previewStatus.status === AsyncStatus.Success ? previewStatus.data : null;
     const ogImage = previewData?.['og:image'];
     const ogImageWidth = previewData ? Number(previewData['og:image:width']) || null : null;
@@ -46,7 +70,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
     const title = previewData?.['og:title'];
     const description = previewData?.['og:description'];
 
-    // Calculate aspect ratio at the top level
+    // Calculate aspect ratio at the top level - BEFORE any early returns
     const aspectRatio = useMemo(() => {
       if (ogImageWidth && ogImageHeight) {
         return ogImageWidth / ogImageHeight;
@@ -54,7 +78,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
       return null;
     }, [ogImageWidth, ogImageHeight]);
 
-    // Generate image URLs at the top level
+    // Generate image URLs at the top level - BEFORE any early returns
     const { thumbnailUrl, fullImageUrl } = useMemo(() => {
       if (!ogImage) return { thumbnailUrl: null, fullImageUrl: null };
 
@@ -132,6 +156,10 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
         </UrlPreviewContent>
       </>
     );
+
+    if (previewStatus.status === AsyncStatus.Error) {
+      return null;
+    }
 
     return (
       <UrlPreview {...props} ref={ref}>
