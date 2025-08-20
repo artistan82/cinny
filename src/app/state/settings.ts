@@ -32,6 +32,7 @@ export interface Settings {
   encUrlPreview: boolean;
   showHiddenEvents: boolean;
   legacyUsernameColor: boolean;
+  removeExifData: boolean;
 
   showNotifications: boolean;
   isNotificationSounds: boolean;
@@ -67,6 +68,7 @@ const defaultSettings: Settings = {
   encUrlPreview: false,
   showHiddenEvents: false,
   legacyUsernameColor: false,
+  removeExifData: true,
 
   showNotifications: true,
   isNotificationSounds: true,

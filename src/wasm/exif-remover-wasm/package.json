@@ -1,0 +1,24 @@
+{
+  "name": "exif-remover-wasm",
+  "description": "Remove EXIF data from images using WebAssembly and the little_exif Rust library",
+  "scripts": {
+    "build": "wasm-pack build --target web --out-dir pkg --no-typescript"
+  },
+  "author": "Thomas Q",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thmasq/exif-remover-wasm"
+  },
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "exif_remover_wasm_bg.wasm",
+    "exif_remover_wasm.js"
+  ],
+  "main": "exif_remover_wasm.js",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
+

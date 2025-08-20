@@ -69,6 +69,11 @@ function serverMatrixSdkCryptoWasm(wasmFilePath) {
 
 export default defineConfig({
   appType: 'spa',
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   publicDir: false,
   base: buildConfig.base,
   server: {

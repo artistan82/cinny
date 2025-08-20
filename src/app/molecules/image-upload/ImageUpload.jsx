@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import PropTypes from 'prop-types';
 import './ImageUpload.scss';
 
-
 import Text from '../../atoms/text/Text';
 import Avatar from '../../atoms/avatar/Avatar';
 import Spinner from '../../atoms/spinner/Spinner';
@@ -10,6 +9,9 @@ import RawIcon from '../../atoms/system-icons/RawIcon';
 
 import PlusIC from '../../../../public/res/ic/outlined/plus.svg';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
+import { processFileForExifRemoval } from '../../utils/exifRemover';
+import { useSetting } from '../../state/hooks/settings';
+import { settingsAtom } from '../../state/settings';
 
 function ImageUpload({
   text, bgColor, imageSrc, onUpload, onRequestRemove,
@@ -18,10 +20,20 @@ function ImageUpload({
   const [uploadPromise, setUploadPromise] = useState(null);
   const uploadImageRef = useRef(null);
   const mx = useMatrixClient();
+  const [removeExifData] = useSetting(settingsAtom, 'removeExifData');
 
   async function uploadImage(e) {
-    const file = e.target.files.item(0);
+    let file = e.target.files.item(0);
     if (file === null) return;
+    
+    if (removeExifData) {
+      try {
+        file = await processFileForExifRemoval(file);
+      } catch (error) {
+        console.error('Error removing EXIF data:', error);
+      }
+    }
+    
     try {
       const uPromise = mx.uploadContent(file);
       setUploadPromise(uPromise);

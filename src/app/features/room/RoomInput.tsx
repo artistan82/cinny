@@ -116,6 +116,7 @@ import { useRoomCreators } from '../../hooks/useRoomCreators';
 import { useTheme } from '../../hooks/useTheme';
 import { useRoomCreatorsTag } from '../../hooks/useRoomCreatorsTag';
 import { usePowerLevelTags } from '../../hooks/usePowerLevelTags';
+import { processFilesForExifRemoval } from '../../utils/exifRemover';
 
 interface RoomInputProps {
   editor: Editor;
@@ -175,10 +176,21 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
 
     const sendTypingStatus = useTypingStatusUpdater(mx, roomId);
 
+    const [removeExifData] = useSetting(settingsAtom, 'removeExifData');
+
     const handleFiles = useCallback(
       async (files: File[]) => {
         setUploadBoard(true);
-        const safeFiles = files.map(safeFile);
+        let safeFiles = files.map(safeFile);
+    
+        if (removeExifData) {
+          try {
+            safeFiles = await processFilesForExifRemoval(safeFiles);
+          } catch (error) {
+            console.error('Error removing EXIF data:', error);
+          }
+        }
+    
         const fileItems: TUploadItem[] = [];
 
         if (room.hasEncryptionStateEvent()) {
@@ -210,8 +222,9 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
           item: fileItems,
         });
       },
-      [setSelectedFiles, room]
+      [setSelectedFiles, room, removeExifData]
     );
+
     const pickFile = useFilePicker(handleFiles, true);
     const handlePaste = useFilePasteHandler(handleFiles);
     const dropZoneVisible = useFileDropZone(fileDropContainerRef, handleFiles);

@@ -12,11 +12,16 @@ import './index.scss';
 
 import { trimTrailingSlash } from './app/utils/common';
 import App from './app/pages/App';
+import { initializeApp } from './app/utils/appInit';
 
 // import i18n (needs to be bundled ;))
 import './app/i18n';
 
 document.body.classList.add(configClass, varsClass);
+
+initializeApp().catch((error) => {
+  console.error('App initialization error:', error);
+});
 
 // Register Service Worker
 if ('serviceWorker' in navigator) {

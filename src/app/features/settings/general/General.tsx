@@ -888,6 +888,7 @@ function Messages() {
   const [urlPreview, setUrlPreview] = useSetting(settingsAtom, 'urlPreview');
   const [encUrlPreview, setEncUrlPreview] = useSetting(settingsAtom, 'encUrlPreview');
   const [showHiddenEvents, setShowHiddenEvents] = useSetting(settingsAtom, 'showHiddenEvents');
+  const [removeExifData, setRemoveExifData] = useSetting(settingsAtom, 'removeExifData');
 
   return (
     <Box direction="Column" gap="100">
@@ -900,19 +901,24 @@ function Messages() {
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
+          title="Remove EXIF Data from Images"
+          description="Automatically remove metadata (location, camera info, etc.) from images before uploading for enhanced privacy"
+          after={<Switch variant="Primary" value={removeExifData} onChange={setRemoveExifData} />}
+        />
+      </SequenceCard>
+      <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
+        <SettingTile
           title="Legacy Username Color"
+          description="Display usernames with legacy colors based on their user IDs."
           after={
-            <Switch
-              variant="Primary"
-              value={legacyUsernameColor}
-              onChange={setLegacyUsernameColor}
-            />
+            <Switch variant="Primary" value={legacyUsernameColor} onChange={setLegacyUsernameColor} />
           }
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
-          title="Hide Membership Change"
+          title="Hide Membership Events"
+          description="Hides membership change messages from room timeline. (Join, Leave, Invite, Kick and Ban)"
           after={
             <Switch
               variant="Primary"
@@ -924,7 +930,8 @@ function Messages() {
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
-          title="Hide Profile Change"
+          title="Hide Nick/Avatar Events"
+          description="Hide nick and avatar change messages from room timeline."
           after={
             <Switch
               variant="Primary"
@@ -936,34 +943,27 @@ function Messages() {
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
-          title="Disable Media Auto Load"
-          after={
-            <Switch
-              variant="Primary"
-              value={!mediaAutoLoad}
-              onChange={(v) => setMediaAutoLoad(!v)}
-            />
-          }
+          title="Media Autoload"
+          after={<Switch variant="Primary" value={mediaAutoLoad} onChange={setMediaAutoLoad} />}
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
-          title="Url Preview"
+          title="URL Preview"
           after={<Switch variant="Primary" value={urlPreview} onChange={setUrlPreview} />}
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
-          title="Url Preview in Encrypted Room"
+          title="URL Preview in Encrypted Rooms"
           after={<Switch variant="Primary" value={encUrlPreview} onChange={setEncUrlPreview} />}
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
           title="Show Hidden Events"
-          after={
-            <Switch variant="Primary" value={showHiddenEvents} onChange={setShowHiddenEvents} />
-          }
+          description="Show hidden state and message events."
+          after={<Switch variant="Primary" value={showHiddenEvents} onChange={setShowHiddenEvents} />}
         />
       </SequenceCard>
     </Box>
