@@ -19,6 +19,9 @@ import {
 import { tryDecodeURIComponent } from '../../utils/dom';
 import { mxcUrlToHttp } from '../../utils/matrix';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
+import { useSetting } from '../../state/hooks/settings';
+import { settingsAtom } from '../../state/settings';
+import { websiteHandlerRegistry } from './websiteHandlers/registry';
 import * as css from './UrlPreviewCard.css';
 
 const MAX_THUMBNAIL_SIZE = 600;
@@ -27,10 +30,17 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
   ({ url, ts, ...props }, ref) => {
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
+    const [websiteHandlersEnabled] = useSetting(settingsAtom, 'websiteHandlers');
     
     const [previewStatus, setPreviewStatus] = useState<AsyncState<IPreviewUrlResponse, unknown>>({
       status: AsyncStatus.Idle,
     });
+
+    // Check if we have a website handler for this URL
+    const websiteHandler = useMemo(() => {
+      if (!websiteHandlersEnabled) return null;
+      return websiteHandlerRegistry.getHandler(url);
+    }, [url, websiteHandlersEnabled]);
 
     const loadPreviewSafely = useCallback(async () => {
       setPreviewStatus({ status: AsyncStatus.Loading });
@@ -58,8 +68,35 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
     }, [mx, url, ts]);
 
     useEffect(() => {
+      // If we have a website handler that completely replaces the preview, 
+      // don't fetch the default preview
+      if (websiteHandler?.handle(url)?.shouldReplace) {
+        return;
+      }
+      
       loadPreviewSafely();
-    }, [loadPreviewSafely]);
+    }, [loadPreviewSafely, websiteHandler, url]);
+
+    // If website handlers are enabled and we have a handler, use it
+    if (websiteHandler) {
+      const handlerResult = websiteHandler.handle(url);
+      if (handlerResult) {
+        const { component: HandlerComponent, shouldReplace } = handlerResult;
+        
+        if (shouldReplace) {
+          // Completely replace the default preview with the handler
+          return (
+            <UrlPreview {...props} ref={ref}>
+              <HandlerComponent url={url} ts={ts} />
+            </UrlPreview>
+          );
+        } else {
+          // Show both the handler and the default preview
+          // This would be for enhanced previews that supplement the default
+          // We'll implement this if needed for other handlers
+        }
+      }
+    }
 
     // Extract preview data at the top level - do this BEFORE any early returns
     const previewData = previewStatus.status === AsyncStatus.Success ? previewStatus.data : null;
@@ -205,83 +242,71 @@ export const UrlPreviewHolder = as<'div'>(({ children, ...props }, ref) => {
   );
 
   useEffect(() => {
+    const scrollElement = scrollRef.current;
     const backAnchor = backAnchorRef.current;
     const frontAnchor = frontAnchorRef.current;
-    if (backAnchor) intersectionObserver?.observe(backAnchor);
-    if (frontAnchor) intersectionObserver?.observe(frontAnchor);
-    return () => {
-      if (backAnchor) intersectionObserver?.unobserve(backAnchor);
-      if (frontAnchor) intersectionObserver?.unobserve(frontAnchor);
-    };
-  }, [intersectionObserver]);
+    if (!scrollElement || !backAnchor || !frontAnchor) return;
 
-  const handleScrollBack = () => {
-    const scroll = scrollRef.current;
-    if (!scroll) return;
-    const { offsetWidth, scrollLeft } = scroll;
-    scroll.scrollTo({
-      left: scrollLeft - offsetWidth / 1.3,
+    intersectionObserver?.observe(backAnchor);
+    intersectionObserver?.observe(frontAnchor);
+    return () => {
+      intersectionObserver?.unobserve(backAnchor);
+      intersectionObserver?.unobserve(frontAnchor);
+    };
+  });
+
+  const handleBackClick = () => {
+    scrollRef.current?.scrollBy({
+      left: -295,
       behavior: 'smooth',
     });
   };
-  
-  const handleScrollFront = () => {
-    const scroll = scrollRef.current;
-    if (!scroll) return;
-    const { offsetWidth, scrollLeft } = scroll;
-    scroll.scrollTo({
-      left: scrollLeft + offsetWidth / 1.3,
+  const handleFrontClick = () => {
+    scrollRef.current?.scrollBy({
+      left: 295,
       behavior: 'smooth',
     });
   };
 
   return (
-    <Box
-      direction="Column"
-      {...props}
-      ref={ref}
-      style={{ marginTop: config.space.S200, position: 'relative' }}
-    >
-      <Scroll ref={scrollRef} direction="Horizontal" size="0" visibility="Hover" hideTrack>
-        <Box shrink="No" alignItems="Center">
-          <div ref={backAnchorRef} />
-          {!backVisible && (
-            <>
-              <div className={css.UrlPreviewHolderGradient({ position: 'Left' })} />
-              <IconButton
-                className={css.UrlPreviewHolderBtn({ position: 'Left' })}
-                variant="Secondary"
-                radii="Pill"
-                size="300"
-                outlined
-                onClick={handleScrollBack}
-              >
-                <Icon size="300" src={Icons.ArrowLeft} />
-              </IconButton>
-            </>
-          )}
-          <Box alignItems="Inherit" gap="200">
+    <Box {...props} ref={ref} direction="Column" gap="200">
+      <Box position="Relative">
+        {!backVisible && (
+          <>
+            <div className={css.UrlPreviewHolderGradient({ position: 'Left' })} />
+            <IconButton
+              className={css.UrlPreviewHolderBtn({ position: 'Left' })}
+              variant="SurfaceVariant"
+              size="300"
+              radii="Pill"
+              onClick={handleBackClick}
+            >
+              <Icon src={Icons.ChevronLeft} />
+            </IconButton>
+          </>
+        )}
+        {!frontVisible && (
+          <>
+            <div className={css.UrlPreviewHolderGradient({ position: 'Right' })} />
+            <IconButton
+              className={css.UrlPreviewHolderBtn({ position: 'Right' })}
+              variant="SurfaceVariant"
+              size="300"
+              radii="Pill"
+              onClick={handleFrontClick}
+            >
+              <Icon src={Icons.ChevronRight} />
+            </IconButton>
+          </>
+        )}
+        <Scroll ref={scrollRef} direction="Horizontal" hideTrack>
+          <Box gap="200" direction="Row">
+            <div ref={backAnchorRef} />
             {children}
-
-            {!frontVisible && (
-              <>
-                <div className={css.UrlPreviewHolderGradient({ position: 'Right' })} />
-                <IconButton
-                  className={css.UrlPreviewHolderBtn({ position: 'Right' })}
-                  variant="Primary"
-                  radii="Pill"
-                  size="300"
-                  outlined
-                  onClick={handleScrollFront}
-                >
-                  <Icon size="300" src={Icons.ArrowRight} />
-                </IconButton>
-              </>
-            )}
             <div ref={frontAnchorRef} />
           </Box>
-        </Box>
-      </Scroll>
+        </Scroll>
+      </Box>
     </Box>
   );
 });

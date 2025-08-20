@@ -26,6 +26,7 @@ import {
   Switch,
   Text,
   toRem,
+  color
 } from 'folds';
 import { isKeyHotkey } from 'is-hotkey';
 import FocusTrap from 'focus-trap-react';
@@ -887,6 +888,7 @@ function Messages() {
   const [mediaAutoLoad, setMediaAutoLoad] = useSetting(settingsAtom, 'mediaAutoLoad');
   const [urlPreview, setUrlPreview] = useSetting(settingsAtom, 'urlPreview');
   const [encUrlPreview, setEncUrlPreview] = useSetting(settingsAtom, 'encUrlPreview');
+  const [websiteHandlers, setWebsiteHandlers] = useSetting(settingsAtom, 'websiteHandlers');
   const [showHiddenEvents, setShowHiddenEvents] = useSetting(settingsAtom, 'showHiddenEvents');
   const [removeExifData, setRemoveExifData] = useSetting(settingsAtom, 'removeExifData');
 
@@ -950,13 +952,45 @@ function Messages() {
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
           title="URL Preview"
+          description="Generate link previews for URLs in messages."
           after={<Switch variant="Primary" value={urlPreview} onChange={setUrlPreview} />}
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
           title="URL Preview in Encrypted Rooms"
-          after={<Switch variant="Primary" value={encUrlPreview} onChange={setEncUrlPreview} />}
+          description="Generate link previews for URLs in encrypted rooms."
+          after={
+            <Switch 
+              variant="Primary" 
+              value={encUrlPreview} 
+              onChange={setEncUrlPreview}
+              disabled={!urlPreview}
+            />
+          }
+        />
+      </SequenceCard>
+      <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
+        <SettingTile
+          title="Rich Website Handlers"
+          description={
+            <Box direction="Column" gap="100">
+              <Text size="T300">
+                Enable rich embeds and interactive previews for supported websites like YouTube.
+              </Text>
+              <Text size="T200" style={{ color: color.Critical.Main }}>
+                Privacy Notice: This feature may load external content and share your IP address with third-party services.
+              </Text>
+            </Box>
+          }
+          after={
+            <Switch 
+              variant="Primary" 
+              value={websiteHandlers} 
+              onChange={setWebsiteHandlers}
+              disabled={!urlPreview}
+            />
+          }
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">

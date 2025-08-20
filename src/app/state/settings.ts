@@ -30,6 +30,7 @@ export interface Settings {
   mediaAutoLoad: boolean;
   urlPreview: boolean;
   encUrlPreview: boolean;
+  websiteHandlers: boolean;
   showHiddenEvents: boolean;
   legacyUsernameColor: boolean;
   removeExifData: boolean;
@@ -66,6 +67,7 @@ const defaultSettings: Settings = {
   mediaAutoLoad: true,
   urlPreview: true,
   encUrlPreview: false,
+  websiteHandlers: false,
   showHiddenEvents: false,
   legacyUsernameColor: false,
   removeExifData: true,
