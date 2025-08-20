@@ -976,7 +976,7 @@ function Messages() {
           description={
             <Box direction="Column" gap="100">
               <Text size="T300">
-                Enable rich embeds and interactive previews for supported websites like YouTube.
+                Enable rich embeds and interactive previews for supported websites like.
               </Text>
               <Text size="T200" style={{ color: color.Critical.Main }}>
                 Privacy Notice: This feature may load external content and share your IP address with third-party services.
