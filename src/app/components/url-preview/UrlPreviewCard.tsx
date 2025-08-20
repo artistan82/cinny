@@ -26,80 +26,93 @@ import * as css from './UrlPreviewCard.css';
 
 const MAX_THUMBNAIL_SIZE = 600;
 
+interface PreviewState {
+  regular: AsyncState<IPreviewUrlResponse, unknown>;
+  handlerResult: any | null;
+  handlerError: Error | null;
+}
+
 export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
   ({ url, ts, ...props }, ref) => {
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
     const [websiteHandlersEnabled] = useSetting(settingsAtom, 'websiteHandlers');
     
-    const [previewStatus, setPreviewStatus] = useState<AsyncState<IPreviewUrlResponse, unknown>>({
-      status: AsyncStatus.Idle,
+    // Unified state management for both preview types
+    const [previewState, setPreviewState] = useState<PreviewState>({
+      regular: { status: AsyncStatus.Idle },
+      handlerResult: null,
+      handlerError: null
     });
 
-    // Check if we have a website handler for this URL
+    // Memoize website handler to prevent unnecessary re-computation
     const websiteHandler = useMemo(() => {
       if (!websiteHandlersEnabled) return null;
       return websiteHandlerRegistry.getHandler(url);
     }, [url, websiteHandlersEnabled]);
 
+    // Memoize handler result to prevent double computation
+    const handlerResult = useMemo(() => {
+      if (!websiteHandler) return null;
+      try {
+        return websiteHandler.handle(url);
+      } catch (error) {
+        console.warn('Website handler failed for URL:', url, error);
+        setPreviewState(prev => ({ ...prev, handlerError: error as Error }));
+        return null;
+      }
+    }, [websiteHandler, url]);
+
     const loadPreviewSafely = useCallback(async () => {
-      setPreviewStatus({ status: AsyncStatus.Loading });
+      setPreviewState(prev => ({
+        ...prev,
+        regular: { status: AsyncStatus.Loading }
+      }));
       
       try {
         const data = await mx.getUrlPreview(url, ts);
-        setPreviewStatus({ 
-          status: AsyncStatus.Success, 
-          data 
-        });
+        setPreviewState(prev => ({
+          ...prev,
+          regular: { 
+            status: AsyncStatus.Success, 
+            data 
+          }
+        }));
       } catch (error) {
-        // Log the error for debugging but don't let it crash the app
         console.warn('Failed to load URL preview for:', url, error);
         
-        // If it's a network error, we can optionally log more details
         if (error instanceof TypeError && error.message.includes('NetworkError')) {
           console.warn('Network error occurred while fetching URL preview. The URL might be invalid or unreachable:', url);
         }
         
-        setPreviewStatus({ 
-          status: AsyncStatus.Error, 
-          error 
-        });
+        setPreviewState(prev => ({
+          ...prev,
+          regular: { 
+            status: AsyncStatus.Error, 
+            error 
+          }
+        }));
       }
     }, [mx, url, ts]);
 
+    // Effect for loading regular previews - only when needed
     useEffect(() => {
-      // If we have a website handler that completely replaces the preview, 
-      // don't fetch the default preview
-      if (websiteHandler?.handle(url)?.shouldReplace) {
-        return;
-      }
+      // Always reset state when URL changes to prevent stale data
+      setPreviewState({
+        regular: { status: AsyncStatus.Idle },
+        handlerResult: null,
+        handlerError: null
+      });
+
+      // Determine if we need to load regular preview
+      const needsRegularPreview = !handlerResult?.shouldReplace;
       
-      loadPreviewSafely();
-    }, [loadPreviewSafely, websiteHandler, url]);
-
-    // If website handlers are enabled and we have a handler, use it
-    if (websiteHandler) {
-      const handlerResult = websiteHandler.handle(url);
-      if (handlerResult) {
-        const { component: HandlerComponent, shouldReplace } = handlerResult;
-        
-        if (shouldReplace) {
-          // Completely replace the default preview with the handler
-          return (
-            <UrlPreview {...props} ref={ref}>
-              <HandlerComponent url={url} ts={ts} />
-            </UrlPreview>
-          );
-        } else {
-          // Show both the handler and the default preview
-          // This would be for enhanced previews that supplement the default
-          // We'll implement this if needed for other handlers
-        }
+      if (needsRegularPreview) {
+        loadPreviewSafely();
       }
-    }
+    }, [url, ts, handlerResult?.shouldReplace, loadPreviewSafely]);
 
-    // Extract preview data at the top level - do this BEFORE any early returns
-    const previewData = previewStatus.status === AsyncStatus.Success ? previewStatus.data : null;
+    const previewData = previewState.regular.status === AsyncStatus.Success ? previewState.regular.data : null;
     const ogImage = previewData?.['og:image'];
     const ogImageWidth = previewData ? Number(previewData['og:image:width']) || null : null;
     const ogImageHeight = previewData ? Number(previewData['og:image:height']) || null : null;
@@ -107,7 +120,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
     const title = previewData?.['og:title'];
     const description = previewData?.['og:description'];
 
-    // Calculate aspect ratio at the top level - BEFORE any early returns
+    // Calculate aspect ratio - always compute this
     const aspectRatio = useMemo(() => {
       if (ogImageWidth && ogImageHeight) {
         return ogImageWidth / ogImageHeight;
@@ -115,7 +128,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
       return null;
     }, [ogImageWidth, ogImageHeight]);
 
-    // Generate image URLs at the top level - BEFORE any early returns
+    // Generate image URLs - always compute this
     const { thumbnailUrl, fullImageUrl } = useMemo(() => {
       if (!ogImage) return { thumbnailUrl: null, fullImageUrl: null };
 
@@ -129,7 +142,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
       const [, serverName, mediaId] = mxcMatch;
       const baseUrl = mx.getHomeserverUrl();
       
-      // Create thumbnail URL (max 600x600 as mentioned in the requirements)
+      // Create thumbnail URL (max 600x600)
       let thumbnailWidth = MAX_THUMBNAIL_SIZE;
       let thumbnailHeight = MAX_THUMBNAIL_SIZE;
       
@@ -145,14 +158,12 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
       }
 
       const thumbnailUrl = `${baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=${thumbnailWidth}&height=${thumbnailHeight}&method=scale`;
-      
-      // Create full image download URL
       const fullImageUrl = `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
       
       return { thumbnailUrl, fullImageUrl };
     }, [ogImage, aspectRatio, mx]);
 
-    const renderContent = () => (
+    const renderRegularContent = useCallback(() => (
       <>
         {thumbnailUrl && (
           <UrlPreviewImage
@@ -192,16 +203,46 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
           </UrlPreviewLink>
         </UrlPreviewContent>
       </>
-    );
+    ), [thumbnailUrl, fullImageUrl, title, aspectRatio, siteName, description, url]);
 
-    if (previewStatus.status === AsyncStatus.Error) {
+    if (previewState.regular.status === AsyncStatus.Error && !handlerResult) {
       return null;
+    }
+
+    if (previewState.handlerError && handlerResult) {
+      console.warn('Website handler component failed, falling back to regular preview');
+    }
+
+    if (handlerResult && handlerResult.shouldReplace && !previewState.handlerError) {
+      const { component: HandlerComponent } = handlerResult;
+      
+      return (
+        <UrlPreview {...props} ref={ref}>
+          <HandlerComponent url={url} ts={ts} />
+        </UrlPreview>
+      );
+    }
+
+    if (handlerResult && !handlerResult.shouldReplace && !previewState.handlerError) {
+      const { component: HandlerComponent } = handlerResult;
+      
+      return (
+        <UrlPreview {...props} ref={ref}>
+          <HandlerComponent url={url} ts={ts} />
+          {previewState.regular.status === AsyncStatus.Success && renderRegularContent()}
+          {previewState.regular.status === AsyncStatus.Loading && (
+            <Box alignItems="Center" justifyContent="Center" style={{ minHeight: '102px' }}>
+              <Spinner variant="Secondary" size="600" />
+            </Box>
+          )}
+        </UrlPreview>
+      );
     }
 
     return (
       <UrlPreview {...props} ref={ref}>
-        {previewStatus.status === AsyncStatus.Success ? (
-          renderContent()
+        {previewState.regular.status === AsyncStatus.Success ? (
+          renderRegularContent()
         ) : (
           <Box alignItems="Center" justifyContent="Center" style={{ minHeight: '102px' }}>
             <Spinner variant="Secondary" size="600" />
