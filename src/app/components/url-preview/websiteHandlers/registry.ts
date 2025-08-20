@@ -2,6 +2,7 @@
 
 import { WebsiteHandler, WebsiteHandlerRegistry } from './types';
 import { youtubeHandler } from './YouTubeHandler';
+import { twitterHandler } from './TwitterHandler';
 
 class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
   handlers: WebsiteHandler[] = [];
@@ -10,6 +11,7 @@ class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
 
   constructor() {
     this.safeRegisterHandler(youtubeHandler);
+    this.safeRegisterHandler(twitterHandler);
   }
 
   getHandler(url: string): WebsiteHandler | null {
@@ -17,6 +19,9 @@ class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
       const errorCount = this.errorCount.get(handler.name) || 0;
       return errorCount < this.MAX_ERROR_COUNT;
     });
+
+    // Sort handlers by priority (higher priority first)
+    activeHandlers.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     for (const handler of activeHandlers) {
       try {
@@ -50,10 +55,13 @@ class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
         throw new Error('Handler must have a handle function');
       }
 
+      // Remove any existing handler with the same name
       this.handlers = this.handlers.filter(h => h.name !== handler.name);
       
+      // Add the new handler
       this.handlers.push(handler);
       
+      // Clear any error count for this handler
       this.errorCount.delete(handler.name);
       
       console.debug(`Website handler "${handler.name}" registered successfully`);

@@ -98,7 +98,7 @@ export function withErrorBoundary<P extends HandlerComponentProps>(
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-      console.error(`Website handler "${handlerName}" component crashed:`, error, errorInfo);
+      console.error(`Error in ${handlerName} handler component:`, error, errorInfo);
     }
 
     render() {
@@ -106,13 +106,12 @@ export function withErrorBoundary<P extends HandlerComponentProps>(
         return React.createElement('div', {
           style: {
             padding: '16px',
-            borderRadius: '8px',
-            backgroundColor: '#f5f5f5',
-            border: '1px solid #ddd',
-            textAlign: 'center' as const,
-            color: '#666'
+            backgroundColor: '#fee',
+            border: '1px solid #fcc',
+            borderRadius: '4px',
+            color: '#900'
           }
-        }, `Failed to load ${handlerName} preview`);
+        }, `Error loading ${handlerName} content`);
       }
 
       return React.createElement(Component, this.props);
@@ -121,62 +120,18 @@ export function withErrorBoundary<P extends HandlerComponentProps>(
 }
 
 /**
- * Utility for safely extracting patterns from URLs
+ * Common URL patterns for various platforms
  */
-export class UrlPatternExtractor {
-  private patterns: Map<string, RegExp>;
-
-  constructor() {
-    this.patterns = new Map();
-  }
-
-  addPattern(name: string, pattern: RegExp): void {
-    this.patterns.set(name, pattern);
-  }
-
-  extract(url: string): Map<string, string[]> {
-    const results = new Map<string, string[]>();
-
-    for (const [name, pattern] of this.patterns) {
-      try {
-        const match = url.match(pattern);
-        if (match) {
-          results.set(name, Array.from(match));
-        }
-      } catch (error) {
-        console.warn(`Pattern "${name}" failed to match URL: ${url}`, error);
-      }
-    }
-
-    return results;
-  }
-
-  extractFirst(url: string, patternName: string): string | null {
-    const pattern = this.patterns.get(patternName);
-    if (!pattern) return null;
-
-    try {
-      const match = url.match(pattern);
-      return match?.[1] || null;
-    } catch (error) {
-      console.warn(`Pattern "${patternName}" failed to match URL: ${url}`, error);
-      return null;
-    }
-  }
-}
-
-/**
- * Common URL patterns for popular platforms
- */
-export const commonPatterns = {
+export const URL_PATTERNS = {
   youtube: {
-    watch: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)(?:&.*)?$/,
+    video: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)(?:&.*)?$/,
     embed: /^https?:\/\/(www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
-    shortUrl: /^https?:\/\/()?youtu\.be\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
+    short: /^https?:\/\/()?youtu\.be\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
     shorts: /^https?:\/\/(www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
   },
   twitter: {
-    status: /^https?:\/\/(www\.)?(twitter\.com|x\.com)\/\w+\/status\/(\d+)(?:\?.*)?$/,
+    tweet: /^https?:\/\/(www\.)?twitter\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)(?:\/.*)?(?:\?.*)?$/,
+    x_tweet: /^https?:\/\/(www\.)?x\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)(?:\/.*)?(?:\?.*)?$/,
   },
   instagram: {
     post: /^https?:\/\/(www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)(?:\/.*)?$/,
@@ -205,4 +160,57 @@ export function debounce<T extends (...args: any[]) => any>(
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => func.apply(null, args), delay);
   };
+}
+
+/**
+ * Utility to extract URL parameters
+ */
+export function extractUrlParams(url: string): URLSearchParams {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.searchParams;
+  } catch (error) {
+    console.warn('Failed to parse URL parameters:', error);
+    return new URLSearchParams();
+  }
+}
+
+/**
+ * Utility to validate URL
+ */
+export function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retry utility with exponential backoff
+ */
+export async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      
+      if (attempt === maxRetries) {
+        throw lastError;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError!;
 }
