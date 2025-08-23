@@ -93,25 +93,25 @@ export function withErrorBoundary<P extends HandlerComponentProps>(
       this.state = { hasError: false };
     }
 
-    static getDerivedStateFromError(error: Error) {
+    static getDerivedStateFromError(error: Error): { hasError: boolean; error: Error } {
       return { hasError: true, error };
     }
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-      console.error(`Error in ${handlerName} handler component:`, error, errorInfo);
+      console.error(`Website handler "${handlerName}" component error:`, error, errorInfo);
     }
 
     render() {
       if (this.state.hasError) {
         return React.createElement('div', {
           style: {
-            padding: '16px',
-            backgroundColor: '#fee',
-            border: '1px solid #fcc',
-            borderRadius: '4px',
-            color: '#900'
+            padding: '1rem',
+            border: '1px solid #e5e7eb',
+            borderRadius: '0.375rem',
+            backgroundColor: '#fef2f2',
+            color: '#dc2626'
           }
-        }, `Error loading ${handlerName} content`);
+        }, `Error loading ${handlerName} preview`);
       }
 
       return React.createElement(Component, this.props);
@@ -120,97 +120,37 @@ export function withErrorBoundary<P extends HandlerComponentProps>(
 }
 
 /**
- * Common URL patterns for various platforms
+ * Makes a proxied fetch request through a configured proxy server.
+ * 
+ * This version uses a proxy path format similar to:
+ * curl "http://127.0.0.1:8080/proxy/https://video.twimg.com/...mp4"
+ * 
+ * @param url - The original URL to fetch through the proxy
+ * @param options - Optional fetch options
+ * @returns Promise<Response> - The fetch response from the proxied request
  */
-export const URL_PATTERNS = {
-  youtube: {
-    video: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]+)(?:&.*)?$/,
-    embed: /^https?:\/\/(www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
-    short: /^https?:\/\/()?youtu\.be\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
-    shorts: /^https?:\/\/(www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]+)(?:\?.*)?$/,
-  },
-  twitter: {
-    tweet: /^https?:\/\/(www\.)?twitter\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)(?:\/.*)?(?:\?.*)?$/,
-    x_tweet: /^https?:\/\/(www\.)?x\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)(?:\/.*)?(?:\?.*)?$/,
-  },
-  instagram: {
-    post: /^https?:\/\/(www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)(?:\/.*)?$/,
-    reel: /^https?:\/\/(www\.)?instagram\.com\/reel\/([a-zA-Z0-9_-]+)(?:\/.*)?$/,
-  },
-  tiktok: {
-    video: /^https?:\/\/(www\.)?tiktok\.com\/@[\w.-]+\/video\/(\d+)(?:\?.*)?$/,
-  },
-  spotify: {
-    track: /^https?:\/\/open\.spotify\.com\/track\/([a-zA-Z0-9]+)(?:\?.*)?$/,
-    album: /^https?:\/\/open\.spotify\.com\/album\/([a-zA-Z0-9]+)(?:\?.*)?$/,
-    playlist: /^https?:\/\/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)(?:\?.*)?$/,
+export async function fetchProxied(url: string, options: RequestInit = {}): Promise<Response> {
+  const proxyServer = import.meta.env.VITE_CINNY_PROXY;
+
+  if (!proxyServer) {
+    throw new Error('VITE_CINNY_PROXY environment variable is not configured');
   }
-};
 
-/**
- * Debounce utility for handler operations
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: NodeJS.Timeout;
-  
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => func.apply(null, args), delay);
-  };
-}
-
-/**
- * Utility to extract URL parameters
- */
-export function extractUrlParams(url: string): URLSearchParams {
   try {
-    const urlObj = new URL(url);
-    return urlObj.searchParams;
+    // Remove protocol from proxyServer if present
+    const cleanProxyServer = proxyServer.replace(/^https?:\/\//, '');
+    const proxyUrl = `http://${cleanProxyServer}/proxy/${url}`;
+
+    const response = await fetch(proxyUrl, {
+      ...options,
+    });
+
+    return response;
   } catch (error) {
-    console.warn('Failed to parse URL parameters:', error);
-    return new URLSearchParams();
+    throw new Error(
+      `Failed to make proxied request to ${url}: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
   }
-}
-
-/**
- * Utility to validate URL
- */
-export function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Retry utility with exponential backoff
- */
-export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
-): Promise<T> {
-  let lastError: Error;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-      
-      if (attempt === maxRetries) {
-        throw lastError;
-      }
-      
-      const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError!;
 }
