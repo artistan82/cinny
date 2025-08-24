@@ -139,7 +139,7 @@ export async function fetchProxied(url: string, options: RequestInit = {}): Prom
   try {
     // Remove protocol from proxyServer if present
     const cleanProxyServer = proxyServer.replace(/^https?:\/\//, '');
-    const proxyUrl = `http://${cleanProxyServer}/proxy/${url}`;
+    const proxyUrl = `https://${cleanProxyServer}/proxy/${url}`;
 
     const response = await fetch(proxyUrl, {
       ...options,
