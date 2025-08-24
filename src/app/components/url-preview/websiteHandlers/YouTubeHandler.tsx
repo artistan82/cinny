@@ -29,7 +29,7 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
-  
+
   const videoId = extractVideoId(url);
 
   const handleError = useCallback(() => {
@@ -47,7 +47,7 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
     if (retryCount < 3) {
       setHasError(false);
       setIsLoading(true);
-      setRetryCount(prev => prev + 1);
+      setRetryCount((prev) => prev + 1);
     }
   }, [retryCount]);
 
@@ -64,11 +64,11 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
         direction="Column"
         alignItems="Center"
         justifyContent="Center"
-        style={{ 
+        style={{
           minHeight: '200px',
           backgroundColor: color.Surface.Container,
           borderRadius: config.radii.R300,
-          padding: config.space.S400
+          padding: config.space.S400,
         }}
       >
         <Icon src={Icons.Warning} size="600" />
@@ -86,12 +86,12 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
         direction="Column"
         alignItems="Center"
         justifyContent="Center"
-        style={{ 
+        style={{
           minHeight: '200px',
           backgroundColor: color.Surface.Container,
           borderRadius: config.radii.R300,
           padding: config.space.S400,
-          gap: config.space.S300
+          gap: config.space.S300,
         }}
       >
         <Icon src={Icons.Warning} size="600" />
@@ -117,7 +117,7 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
         overflow: 'hidden',
         width: 'fit-content',
         maxWidth: '100%',
-        position: 'relative'
+        position: 'relative',
       }}
     >
       {isLoading && (
@@ -132,13 +132,13 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1
+            zIndex: 1,
           }}
         >
           <Icon src={Icons.Play} size="600" />
         </Box>
       )}
-      
+
       <iframe
         key={`${videoId}-${retryCount}`}
         src={embedUrl}
@@ -151,7 +151,7 @@ const YouTubeEmbed: React.FC<YouTubeEmbedProps> = ({ url }) => {
         style={{
           maxWidth: '100%',
           border: 'none',
-          display: 'block'
+          display: 'block',
         }}
         onError={handleError}
         onLoad={handleLoad}
@@ -164,7 +164,7 @@ export const youtubeHandler: WebsiteHandler = {
   name: 'YouTube',
   test: (url: string) => {
     try {
-      return YOUTUBE_PATTERNS.some(pattern => pattern.test(url));
+      return YOUTUBE_PATTERNS.some((pattern) => pattern.test(url));
     } catch (error) {
       console.warn('Error testing YouTube URL pattern:', error);
       return false;

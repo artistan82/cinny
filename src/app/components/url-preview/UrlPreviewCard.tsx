@@ -37,12 +37,12 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
     const [websiteHandlersEnabled] = useSetting(settingsAtom, 'websiteHandlers');
-    
+
     // Unified state management for both preview types
     const [previewState, setPreviewState] = useState<PreviewState>({
       regular: { status: AsyncStatus.Idle },
       handlerResult: null,
-      handlerError: null
+      handlerError: null,
     });
 
     // Memoize website handler to prevent unnecessary re-computation
@@ -58,39 +58,42 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
         return websiteHandler.handle(url);
       } catch (error) {
         console.warn('Website handler failed for URL:', url, error);
-        setPreviewState(prev => ({ ...prev, handlerError: error as Error }));
+        setPreviewState((prev) => ({ ...prev, handlerError: error as Error }));
         return null;
       }
     }, [websiteHandler, url]);
 
     const loadPreviewSafely = useCallback(async () => {
-      setPreviewState(prev => ({
+      setPreviewState((prev) => ({
         ...prev,
-        regular: { status: AsyncStatus.Loading }
+        regular: { status: AsyncStatus.Loading },
       }));
-      
+
       try {
         const data = await mx.getUrlPreview(url, ts);
-        setPreviewState(prev => ({
+        setPreviewState((prev) => ({
           ...prev,
-          regular: { 
-            status: AsyncStatus.Success, 
-            data 
-          }
+          regular: {
+            status: AsyncStatus.Success,
+            data,
+          },
         }));
       } catch (error) {
         console.warn('Failed to load URL preview for:', url, error);
-        
+
         if (error instanceof TypeError && error.message.includes('NetworkError')) {
-          console.warn('Network error occurred while fetching URL preview. The URL might be invalid or unreachable:', url);
+          console.warn(
+            'Network error occurred while fetching URL preview. The URL might be invalid or unreachable:',
+            url
+          );
         }
-        
-        setPreviewState(prev => ({
+
+        setPreviewState((prev) => ({
           ...prev,
-          regular: { 
-            status: AsyncStatus.Error, 
-            error 
-          }
+          regular: {
+            status: AsyncStatus.Error,
+            error,
+          },
         }));
       }
     }, [mx, url, ts]);
@@ -101,18 +104,19 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
       setPreviewState({
         regular: { status: AsyncStatus.Idle },
         handlerResult: null,
-        handlerError: null
+        handlerError: null,
       });
 
       // Determine if we need to load regular preview
       const needsRegularPreview = !handlerResult?.shouldReplace;
-      
+
       if (needsRegularPreview) {
         loadPreviewSafely();
       }
     }, [url, ts, handlerResult?.shouldReplace, loadPreviewSafely]);
 
-    const previewData = previewState.regular.status === AsyncStatus.Success ? previewState.regular.data : null;
+    const previewData =
+      previewState.regular.status === AsyncStatus.Success ? previewState.regular.data : null;
     const ogImage = previewData?.['og:image'];
     const ogImageWidth = previewData ? Number(previewData['og:image:width']) || null : null;
     const ogImageHeight = previewData ? Number(previewData['og:image:height']) || null : null;
@@ -141,69 +145,61 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
 
       const [, serverName, mediaId] = mxcMatch;
       const baseUrl = mx.getHomeserverUrl();
-      
+
       // Create thumbnail URL (max 600x600)
       let thumbnailWidth = MAX_THUMBNAIL_SIZE;
       let thumbnailHeight = MAX_THUMBNAIL_SIZE;
-      
+
       // Calculate optimal thumbnail dimensions while maintaining aspect ratio
       if (aspectRatio) {
         if (aspectRatio > 1) {
           // Landscape: limit width, calculate height
-          thumbnailHeight = Math.min(MAX_THUMBNAIL_SIZE, Math.round(MAX_THUMBNAIL_SIZE / aspectRatio));
+          thumbnailHeight = Math.min(
+            MAX_THUMBNAIL_SIZE,
+            Math.round(MAX_THUMBNAIL_SIZE / aspectRatio)
+          );
         } else {
           // Portrait: limit height, calculate width
-          thumbnailWidth = Math.min(MAX_THUMBNAIL_SIZE, Math.round(MAX_THUMBNAIL_SIZE * aspectRatio));
+          thumbnailWidth = Math.min(
+            MAX_THUMBNAIL_SIZE,
+            Math.round(MAX_THUMBNAIL_SIZE * aspectRatio)
+          );
         }
       }
 
       const thumbnailUrl = `${baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=${thumbnailWidth}&height=${thumbnailHeight}&method=scale`;
       const fullImageUrl = `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
-      
+
       return { thumbnailUrl, fullImageUrl };
     }, [ogImage, aspectRatio, mx]);
 
-    const renderRegularContent = useCallback(() => (
-      <>
-        {thumbnailUrl && (
-          <UrlPreviewImage
-            src={thumbnailUrl}
-            fullSrc={fullImageUrl || undefined}
-            alt={title || 'Preview image'}
-            title={title || undefined}
-            aspectRatio={aspectRatio || undefined}
-          />
-        )}
-        <UrlPreviewContent>
-          {siteName && (
-            <UrlPreviewSiteName>
-              {siteName}
-            </UrlPreviewSiteName>
+    const renderRegularContent = useCallback(
+      () => (
+        <>
+          {thumbnailUrl && (
+            <UrlPreviewImage
+              src={thumbnailUrl}
+              fullSrc={fullImageUrl || undefined}
+              alt={title || 'Preview image'}
+              title={title || undefined}
+              aspectRatio={aspectRatio || undefined}
+            />
           )}
-          
-          {title && (
-            <UrlPreviewTitle>
-              {title}
-            </UrlPreviewTitle>
-          )}
-          
-          {description && (
-            <UrlPreviewDescription>
-              {description}
-            </UrlPreviewDescription>
-          )}
-          
-          <UrlPreviewLink
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={url}
-          >
-            {tryDecodeURIComponent(url)}
-          </UrlPreviewLink>
-        </UrlPreviewContent>
-      </>
-    ), [thumbnailUrl, fullImageUrl, title, aspectRatio, siteName, description, url]);
+          <UrlPreviewContent>
+            {siteName && <UrlPreviewSiteName>{siteName}</UrlPreviewSiteName>}
+
+            {title && <UrlPreviewTitle>{title}</UrlPreviewTitle>}
+
+            {description && <UrlPreviewDescription>{description}</UrlPreviewDescription>}
+
+            <UrlPreviewLink href={url} target="_blank" rel="noopener noreferrer" title={url}>
+              {tryDecodeURIComponent(url)}
+            </UrlPreviewLink>
+          </UrlPreviewContent>
+        </>
+      ),
+      [thumbnailUrl, fullImageUrl, title, aspectRatio, siteName, description, url]
+    );
 
     if (previewState.regular.status === AsyncStatus.Error && !handlerResult) {
       return null;
@@ -215,7 +211,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
 
     if (handlerResult && handlerResult.shouldReplace && !previewState.handlerError) {
       const { component: HandlerComponent } = handlerResult;
-      
+
       return (
         <UrlPreview {...props} ref={ref}>
           <HandlerComponent url={url} ts={ts} />
@@ -225,7 +221,7 @@ export const UrlPreviewCard = as<'div', { url: string; ts: number }>(
 
     if (handlerResult && !handlerResult.shouldReplace && !previewState.handlerError) {
       const { component: HandlerComponent } = handlerResult;
-      
+
       return (
         <UrlPreview {...props} ref={ref}>
           <HandlerComponent url={url} ts={ts} />

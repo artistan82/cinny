@@ -13,10 +13,10 @@ export const UrlPreview = style([
     overflow: 'hidden',
     display: 'flex',
     gap: config.space.S200,
-    
+
     // Mobile-first approach - vertical layout
     flexDirection: 'column',
-    
+
     // Desktop - horizontal layout with image on left, content on right
     '@media': {
       '(min-width: 768px)': {
@@ -34,11 +34,11 @@ export const UrlPreviewImageContainer = style([
     flexShrink: 0,
     overflow: 'hidden',
     borderRadius: config.radii.R200,
-    
+
     // Mobile - full width, max height 200px
     width: '100%',
     maxHeight: toRem(200),
-    
+
     // Desktop - fixed width with aspect ratio maintained
     '@media': {
       '(min-width: 768px)': {
@@ -59,10 +59,10 @@ export const UrlPreviewImg = style([
     objectPosition: 'center',
     display: 'block',
     transition: 'transform 150ms ease',
-    
+
     // Maintain aspect ratio
     aspectRatio: 'auto',
-    
+
     ':hover': {
       transform: 'scale(1.02)',
     },
@@ -132,7 +132,7 @@ export const UrlPreviewLink = style([
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    
+
     ':hover': {
       textDecoration: 'underline',
     },

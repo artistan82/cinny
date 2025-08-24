@@ -15,7 +15,7 @@ class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
   }
 
   getHandler(url: string): WebsiteHandler | null {
-    const activeHandlers = this.handlers.filter(handler => {
+    const activeHandlers = this.handlers.filter((handler) => {
       const errorCount = this.errorCount.get(handler.name) || 0;
       return errorCount < this.MAX_ERROR_COUNT;
     });
@@ -46,24 +46,24 @@ class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
       if (!handler.name || typeof handler.name !== 'string') {
         throw new Error('Handler must have a valid name');
       }
-      
+
       if (typeof handler.test !== 'function') {
         throw new Error('Handler must have a test function');
       }
-      
+
       if (typeof handler.handle !== 'function') {
         throw new Error('Handler must have a handle function');
       }
 
       // Remove any existing handler with the same name
-      this.handlers = this.handlers.filter(h => h.name !== handler.name);
-      
+      this.handlers = this.handlers.filter((h) => h.name !== handler.name);
+
       // Add the new handler
       this.handlers.push(handler);
-      
+
       // Clear any error count for this handler
       this.errorCount.delete(handler.name);
-      
+
       console.debug(`Website handler "${handler.name}" registered successfully`);
     } catch (error) {
       console.error(`Failed to register website handler "${handler?.name || 'unknown'}":`, error);
@@ -76,12 +76,14 @@ class WebsiteHandlerRegistryImpl implements WebsiteHandlerRegistry {
     this.errorCount.set(handlerName, newCount);
 
     if (newCount >= this.MAX_ERROR_COUNT) {
-      console.warn(`Website handler "${handlerName}" has been disabled due to repeated errors (${newCount} errors)`);
+      console.warn(
+        `Website handler "${handlerName}" has been disabled due to repeated errors (${newCount} errors)`
+      );
     }
   }
 
   getRegisteredHandlers(): string[] {
-    return this.handlers.map(h => h.name);
+    return this.handlers.map((h) => h.name);
   }
 
   getErrorCounts(): Map<string, number> {

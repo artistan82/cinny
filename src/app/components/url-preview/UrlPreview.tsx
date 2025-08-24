@@ -49,22 +49,25 @@ export const UrlPreviewImage = as<'div', UrlPreviewImageProps>(
       // Calculate the constrained size (80% of viewport)
       const maxConstrainedWidth = window.innerWidth * 0.8;
       const maxConstrainedHeight = window.innerHeight * 0.8;
-      
+
       // Check if natural size is larger than constrained size
-      const wouldZoomEnlarge = img.naturalWidth > maxConstrainedWidth || 
-                               img.naturalHeight > maxConstrainedHeight;
-      
+      const wouldZoomEnlarge =
+        img.naturalWidth > maxConstrainedWidth || img.naturalHeight > maxConstrainedHeight;
+
       setCanZoom(wouldZoomEnlarge);
     }, []);
 
-    const handleImageOverlayClick = useCallback((event: React.MouseEvent) => {
-      // Prevent event from bubbling to overlay container
-      event.stopPropagation();
-      // Toggle zoom state only if zoom would enlarge the image
-      if (canZoom) {
-        setIsZoomed(prev => !prev);
-      }
-    }, [canZoom]);
+    const handleImageOverlayClick = useCallback(
+      (event: React.MouseEvent) => {
+        // Prevent event from bubbling to overlay container
+        event.stopPropagation();
+        // Toggle zoom state only if zoom would enlarge the image
+        if (canZoom) {
+          setIsZoomed((prev) => !prev);
+        }
+      },
+      [canZoom]
+    );
 
     const handleCloseOverlay = useCallback(() => {
       setImageOverlay(false);
@@ -103,14 +106,9 @@ export const UrlPreviewImage = as<'div', UrlPreviewImageProps>(
           {...props}
           ref={ref}
         >
-          <img
-            className={css.UrlPreviewImg}
-            src={src}
-            alt={alt}
-            title={title}
-          />
+          <img className={css.UrlPreviewImg} src={src} alt={alt} title={title} />
         </div>
-        
+
         {/* Image Overlay Modal */}
         {imageOverlay && fullSrc && (
           <div className={css.ImageOverlay} ref={overlayRef} onClick={handleOverlayClick}>
@@ -123,7 +121,7 @@ export const UrlPreviewImage = as<'div', UrlPreviewImageProps>(
                 title={title}
                 onLoad={handleImageLoad}
                 onClick={handleImageOverlayClick}
-                style={{ 
+                style={{
                   cursor: canZoom ? 'pointer' : 'default',
                 }}
               />
