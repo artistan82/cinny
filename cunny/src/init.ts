@@ -3,7 +3,8 @@ import path, { dirname } from "path";
 import Database from "better-sqlite3";
 import webpush from "web-push";
 import { fileURLToPath } from "url";
-import { logInfo, logError, setLoggerConfig } from "./logger.js";
+import { logInfo, logError, setLoggerConfig, setLogPrefix } from "./logger.js";
+import { isMainThread } from 'worker_threads';
 import { ensureSecrets, getPushGatewaySecret as secretGetPushGatewaySecret, getAdminApiKeys as secretGetAdminApiKeys, reload as reloadSecrets } from "./secretManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +28,13 @@ setLoggerConfig({
 });
 
 export function ensureInitialized() {    
+    // If running in a worker thread/process, set a log prefix so logs are identifiable.
+    try {
+        if (!isMainThread) setLogPrefix('push-worker-');
+        else if (process.env.PUSH_WORKER === '1') setLogPrefix('push-worker-');
+    } catch (e) {
+        // ignore if worker_threads isn't available or detection fails
+    }
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
         logInfo("init", `Created data directory at ${dataDir}`);

@@ -1,7 +1,15 @@
 import { parentPort } from 'worker_threads';
 import webpush from 'web-push';
-import { fetchDuePushJobs, markPushJobAttempted, removePushJob, getSubscriptionByEndpoint, removeSubscription, recordJobError, markJobFailed } from './db.js';
+import { ensureInitialized } from './init.js';
 import { logInfo, logWarn, logError } from './logger.js';
+
+// Ensure the worker has its own DB connection and secrets loaded.
+// init.ensureInitialized will create/open the database and prepare data files.
+ensureInitialized();
+
+// Dynamically import DB helpers after initialization so they get a valid `db` instance.
+const dbModule = await import('./db.js') as any;
+const { fetchDuePushJobs, markPushJobAttempted, removePushJob, getSubscriptionByEndpoint, removeSubscription, recordJobError, markJobFailed } = dbModule;
 
 const POLL_INTERVAL_MS = parseInt(process.env.PUSH_WORKER_POLL_MS || '2000', 10);
 const FETCH_LIMIT = parseInt(process.env.PUSH_WORKER_FETCH_LIMIT || '20', 10);
@@ -19,14 +27,14 @@ async function processJob(job: any) {
         try {
             await webpush.sendNotification(subscription, JSON.stringify(job.payload));
             removePushJob(job.id);
-            logInfo('push-worker', `Delivered job ${job.id} to ${job.endpoint}`);
+            logInfo('', `Delivered job ${job.id} to ${job.endpoint}`);
         } catch (err) {
             const errAny: any = err;
             const status = errAny?.statusCode || errAny?.status || undefined;
             if (status === 404 || status === 410) {
                 removeSubscription(job.endpoint);
                 removePushJob(job.id);
-                logInfo('push-worker', `Removed invalid subscription ${job.endpoint} (job ${job.id})`);
+                logInfo('', `Removed invalid subscription ${job.endpoint} (job ${job.id})`);
             } else {
                 const attempts = (job.attempts || 0) + 1;
                 try {
@@ -35,7 +43,7 @@ async function processJob(job: any) {
                     const text = `message=${msg}` + (errAny?.body ? ` body=${JSON.stringify(errAny.body)}` : '');
                     recordJobError(job.id, text, code);
                 } catch (recErr) {
-                    logWarn('push-worker', `Failed to record job error for ${job.id}: ${recErr instanceof Error ? recErr.message : String(recErr)}`);
+                    logWarn('', `Failed to record job error for ${job.id}: ${recErr instanceof Error ? recErr.message : String(recErr)}`);
                 }
                 if (attempts >= (job.max_attempts || 5)) {
                     try {
@@ -43,16 +51,16 @@ async function processJob(job: any) {
                         const structured = `message=${errAny?.message || String(errAny)}` + (errAny?.body ? ` body=${JSON.stringify(errAny.body)}` : '');
                         markJobFailed(job.id, attempts, structured, code);
                     } catch (mErr) {
-                        logWarn('push-worker', `Failed to mark job ${job.id} as failed: ${mErr instanceof Error ? mErr.message : String(mErr)}`);
+                        logWarn('', `Failed to mark job ${job.id} as failed: ${mErr instanceof Error ? mErr.message : String(mErr)}`);
                         removePushJob(job.id);
                     }
-                    logWarn('push-worker', `Job ${job.id} permanently failed after ${attempts} attempts: ${errAny?.message || String(errAny)}`);
+                    logWarn('', `Job ${job.id} permanently failed after ${attempts} attempts: ${errAny?.message || String(errAny)}`);
                 } else {
                     const baseMs = 1000 * Math.pow(2, attempts - 1);
                     const jitter = Math.floor(Math.random() * 1000);
                     const nextTry = new Date(Date.now() + baseMs + jitter).toISOString();
                     markPushJobAttempted(job.id, attempts, nextTry);
-                    logWarn('push-worker', `Job ${job.id} attempt ${attempts} failed, scheduling retry at ${nextTry}`);
+                    logWarn('', `Job ${job.id} attempt ${attempts} failed, scheduling retry at ${nextTry}`);
                 }
             }
         }
@@ -86,8 +94,9 @@ async function loop() {
 const donePromise = (async () => {
     try {
         await loop();
+        logInfo('shutdown', 'worker loop completed, exiting');
     } catch (err) {
-        logError('push-worker', `worker loop crashed: ${err instanceof Error ? err.message : String(err)}`);
+        logError('', `worker loop crashed: ${err instanceof Error ? err.message : String(err)}`);
     }
 })();
 

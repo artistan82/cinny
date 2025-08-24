@@ -4,6 +4,8 @@ import cors from "cors";
 import webpush from "web-push";
 import { addSubscription, getSubscriptions, removeSubscription, getSubscriptionByUserDevice, getSubscriptionByEndpoint, getSubscriptionsByUser, enqueuePushJob, getPendingQueue, getJobById, cancelJob, requeueJob } from "./db.js";
 import { createHash } from 'crypto';
+import rateLimit from 'express-rate-limit';
+import { CONFIG } from './config.js';
 import { logInfo, logWarn, logError, logAudit } from "./logger.js";
 import { ensureInitialized, getVapidData as getVapidDetails } from "./init.js";
 import { pushAuthMiddleware, adminAuthMiddleware } from "./auth.js";
@@ -17,8 +19,60 @@ let workerInProcess = false;
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Payload limits (centralized)
+const EXPRESS_BODY_LIMIT = CONFIG.EXPRESS_BODY_LIMIT; // for express.json
+const PUSH_PAYLOAD_MAX_BYTES = CONFIG.PUSH_PAYLOAD_MAX_BYTES; // per-notification payload cap in bytes
+const MAX_DEVICES_PER_NOTIFY = CONFIG.MAX_DEVICES_PER_NOTIFY;
+
+// Rate limiting (centralized)
+const GLOBAL_RATE_LIMIT_WINDOW_MS = CONFIG.RATE_LIMIT_WINDOW_MS;
+const GLOBAL_RATE_LIMIT_MAX = CONFIG.RATE_LIMIT_MAX;
+
+const globalLimiter = rateLimit({
+    windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,
+    max: GLOBAL_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req: any, res: any) => {
+        logWarn('rate-limit', `Request rate limited: ${req.ip || req.socket?.remoteAddress}`);
+        logAudit('rate-limit', { ip: req.ip || req.socket?.remoteAddress, path: req.path }, req.ip || req.socket?.remoteAddress);
+        res.status(429).json({ error: 'too many requests' });
+    }
+});
+
+// Per-route stricter limit for admin endpoints
+const ADMIN_RATE_LIMIT_MAX = CONFIG.ADMIN_RATE_LIMIT_MAX;
+const ADMIN_RATE_LIMIT_WINDOW_MS = CONFIG.ADMIN_RATE_LIMIT_WINDOW_MS;
+const adminLimiter = rateLimit({
+    windowMs: ADMIN_RATE_LIMIT_WINDOW_MS,
+    max: ADMIN_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req: any, res: any) => {
+        logWarn('rate-limit-admin', `Admin request rate limited: ${req.ip || req.socket?.remoteAddress}`);
+        logAudit('rate-limit-admin', { ip: req.ip || req.socket?.remoteAddress, path: req.path }, req.ip || req.socket?.remoteAddress);
+        res.status(429).json({ error: 'too many requests' });
+    }
+});
+
+// Per-route limit for subscribe endpoint to prevent abuse
+const SUBSCRIBE_RATE_LIMIT_MAX = CONFIG.SUBSCRIBE_RATE_LIMIT_MAX;
+const SUBSCRIBE_RATE_LIMIT_WINDOW_MS = CONFIG.SUBSCRIBE_RATE_LIMIT_WINDOW_MS;
+const subscribeLimiter = rateLimit({
+    windowMs: SUBSCRIBE_RATE_LIMIT_WINDOW_MS,
+    max: SUBSCRIBE_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req: any, res: any) => {
+        logWarn('rate-limit-subscribe', `Subscribe request rate limited: ${req.ip || req.socket?.remoteAddress}`);
+        logAudit('rate-limit-subscribe', { ip: req.ip || req.socket?.remoteAddress, path: req.path }, req.ip || req.socket?.remoteAddress);
+        res.status(429).json({ error: 'too many requests' });
+    }
+});
+
 app.use(cors());
-app.use(express.json());
+app.use(globalLimiter);
+app.use(express.json({ limit: EXPRESS_BODY_LIMIT }));
 
 ensureInitialized();
 
@@ -33,7 +87,7 @@ app.get("/vapidPublicKey", (req, res) => {
     res.json({ publicKey: vapidDetails.publicKey });
 });
 
-app.post("/subscribe", (req, res) => {
+app.post("/subscribe", subscribeLimiter, (req, res) => {
     const { user_id, device_id, endpoint, keys } = req.body;
     if (!user_id || !endpoint || !keys) {
         return res.status(400).json({ error: "missing user_id, endpoint, or keys" });
@@ -60,6 +114,13 @@ app.post("/sendNotification", async (req, res) => {
     const { user_id, payload } = req.body;
     if (!user_id || !payload) {
         return res.status(400).json({ error: "missing user_id or payload" });
+    }
+    // protect against overly large payloads
+    try {
+        const size = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+        if (size > PUSH_PAYLOAD_MAX_BYTES) return res.status(413).json({ error: 'payload too large' });
+    } catch (e) {
+        return res.status(400).json({ error: 'invalid payload' });
     }
     const subscriptions = getSubscriptions().filter(sub => sub.user_id === user_id);
     if (subscriptions.length === 0) {
@@ -89,13 +150,13 @@ app.get("/subscriptions/:user_id", adminAuthMiddleware, (req, res) => {
     res.json(getSubscriptionsByUser(userId));
 });
 
-app.post("/admin/rotate-push", adminAuthMiddleware, (req, res) => {
+app.post("/admin/rotate-push", adminLimiter, adminAuthMiddleware, (req, res) => {
     const entry = rotatePushSecretInternal();
     logAudit("rotate-push", { id: entry.id }, req.ip || req.socket?.remoteAddress);
     res.json({ pushGatewaySecret: entry.secret, id: entry.id, created_at: entry.created_at });
 });
 
-app.post("/admin/rotate-admin", adminAuthMiddleware, (req, res) => {
+app.post("/admin/rotate-admin", adminLimiter, adminAuthMiddleware, (req, res) => {
     // optional query param ?append=false to replace keys instead of appending
     const append = req.query.append !== 'false';
     const entry = rotateAdminKeyInternal(append);
@@ -103,7 +164,7 @@ app.post("/admin/rotate-admin", adminAuthMiddleware, (req, res) => {
     res.json({ adminKey: entry.key, id: entry.id, created_at: entry.created_at });
 });
 
-app.post("/admin/revoke-admin", adminAuthMiddleware, (req, res) => {
+app.post("/admin/revoke-admin", adminLimiter, adminAuthMiddleware, (req, res) => {
     const { id } = req.body || {};
     if (!id) return res.status(400).json({ error: "missing id" });
     const result = revokeAdminKeyInternal(id);
@@ -111,7 +172,7 @@ app.post("/admin/revoke-admin", adminAuthMiddleware, (req, res) => {
     res.json(result);
 });
 
-app.get("/admin/keys", adminAuthMiddleware, (req, res) => {
+app.get("/admin/keys", adminLimiter, adminAuthMiddleware, (req, res) => {
     res.json(listAdminKeysInternal());
 });
 
@@ -123,6 +184,19 @@ app.post("/_matrix/push/v1/notify", pushAuthMiddleware, async (req, res) => {
     const body = req.body;
     if (!body || !Array.isArray(body.devices) || !body.event) {
         return res.status(400).json({ error: "invalid payload" });
+    }
+    // enforce device-count limit
+    if (Array.isArray(body.devices) && body.devices.length > MAX_DEVICES_PER_NOTIFY) {
+        logWarn('notify', `Rejected notify with ${body.devices.length} devices > ${MAX_DEVICES_PER_NOTIFY}`);
+        logAudit('notify-reject', { devices: body.devices.length }, req.ip || req.socket?.remoteAddress);
+        return res.status(413).json({ error: 'too many devices in notify payload' });
+    }
+    // Check overall event size to avoid abuse (dedupe key uses event object)
+    try {
+        const size = Buffer.byteLength(JSON.stringify(body.event || {}), 'utf8');
+        if (size > PUSH_PAYLOAD_MAX_BYTES) return res.status(413).json({ error: 'event payload too large' });
+    } catch (e) {
+        return res.status(400).json({ error: 'invalid event payload' });
     }
     let queued = 0;
     const deviceResults: any[] = [];
@@ -202,17 +276,66 @@ const _server = app.listen(port, async () => {
     (app as any).locals.serverInstance = _server;
     logInfo("server", `Server running on http://localhost:${port}`);
     try {
-        const url = new URL('./pushWorker.js', import.meta.url).href;
-        const mod = await import(url) as any;
-        if (typeof mod?.stop === 'function') inProcessWorkerStop = () => mod.stop();
-        workerInProcess = true;
-        logInfo('worker', 'Push worker started in-process');
+        let started = false;
+
+        if (!started) {
+            try {
+                const distUrl = new URL('../dist/pushWorker.js', import.meta.url);
+                pushWorker = new Worker(distUrl, ({ type: 'module' } as any));
+                started = true;
+                logInfo('worker', 'Push worker started in worker thread (../dist/pushWorker.js)');
+            } catch (e2) {
+                logError('worker', `Failed to start push worker (dist): ${e2 instanceof Error ? e2.message : String(e2)}`);
+            }
+        }
+
+        if (!started) {
+            try {
+                const jsUrl = new URL('./pushWorker.js', import.meta.url);
+                pushWorker = new Worker(jsUrl, ({ type: 'module' } as any));
+                started = true;
+                logInfo('worker', 'Push worker started in worker thread (./pushWorker.js)');
+            } catch (e2) {
+                logError('worker', `Failed to start push worker (local): ${e2 instanceof Error ? e2.message : String(e2)}`);
+            }
+        }
+
+        if (pushWorker) {
+            // Wire up events for logging and graceful shutdown
+            pushWorker.once('exit', (code) => logInfo('worker', `Worker thread exited with code ${code}`));
+            pushWorker.on('error', (err) => logError('worker', `Worker thread error: ${err instanceof Error ? err.message : String(err)}`));
+            workerInProcess = false;
+        } else {
+            // Fallback: run in-process via dynamic import (older behaviour)
+            try {
+                const url = new URL('./pushWorker.js', import.meta.url).href;
+                const mod = await import(url) as any;
+                if (typeof mod?.stop === 'function') inProcessWorkerStop = () => mod.stop();
+                workerInProcess = true;
+                logInfo('worker', 'Push worker started in-process');
+            } catch (err) {
+                logError('worker', `Failed to start push worker (thread and in-process fallback): ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+
+        // If we don't have a running worker (thread) nor an in-process worker, shutdown: worker is critical.
+        if (!pushWorker && !workerInProcess) {
+            logError('worker', 'Push worker failed to start; shutting down server since worker is required');
+            try {
+                const srv = (app as any).locals?.serverInstance || null;
+                if (srv && typeof srv.close === 'function') {
+                    await new Promise<void>((resolve, reject) => srv.close((err: any) => err ? reject(err) : resolve()));
+                    logInfo('shutdown', 'HTTP server closed due to worker start failure');
+                }
+            } catch (e) {
+                logWarn('shutdown', `Error closing server during shutdown after worker failure: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            process.exit(1);
+        }
     } catch (err) {
-        logError('worker', `Failed to start push worker via dynamic import ./pushWorker.js: ${err instanceof Error ? err.message : String(err)}`);
+        logError('worker', `Unexpected error starting push worker: ${err instanceof Error ? err.message : String(err)}`);
     }
 });
-
-const server = app.listen as unknown;
 
 async function gracefulShutdown(signal: string) {
     try {

@@ -8,6 +8,12 @@ let logConfig = {
     logLevel: "info" as LogLevel,
 };
 
+let logPrefix: string | undefined = undefined;
+
+export function setLogPrefix(prefix?: string) {
+    logPrefix = prefix && prefix.length > 0 ? prefix : undefined;
+}
+
 export function setLoggerConfig(config: { logPath?: string; auditPath?: string; logLevel?: LogLevel }) {
     if (config.logPath) logConfig.logPath = config.logPath;
     if (config.auditPath) logConfig.auditPath = config.auditPath;
@@ -17,9 +23,9 @@ export function setLoggerConfig(config: { logPath?: string; auditPath?: string; 
 function formatLog(level: LogLevel, component: string, message: string) {
     const timestamp = new Date().toISOString();
     // Pad component and level for alignment
-    const compPad = component.padEnd(12, ' ');
+    const prefix = logPrefix ? `${logPrefix}` : '';
+    const compPad = (prefix + component).padEnd(20, ' ');
     const levelPad = level.toUpperCase().padEnd(7, ' ');
-    
     return `${timestamp} | ${compPad} | ${levelPad} | ${message}`;
 }
 
