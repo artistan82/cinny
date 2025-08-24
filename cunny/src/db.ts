@@ -133,3 +133,59 @@ export function removeSubscription(endpoint: string): { success: boolean; error?
 
     return { success: true };
 }
+
+export function enqueuePushJob(job: { user_id?: string; device_id?: string; endpoint: string; keys: any; payload: any; max_attempts?: number }) {
+    const stmt = db.prepare('INSERT INTO push_queue (user_id, device_id, endpoint, keys, payload, max_attempts) VALUES (?, ?, ?, ?, ?, ?)');
+    stmt.run(job.user_id || null, job.device_id || null, job.endpoint, JSON.stringify(job.keys), JSON.stringify(job.payload), job.max_attempts || 5);
+}
+
+export function fetchDuePushJobs(limit = 10) {
+    const stmt = db.prepare('SELECT id, user_id, device_id, endpoint, keys, payload, attempts, max_attempts, next_try_at, last_attempt_at, status_code, error_text, created_at FROM push_queue WHERE next_try_at <= datetime(\'now\') ORDER BY next_try_at ASC LIMIT ?');
+    const rows = stmt.all(limit) as any[];
+    return rows.map(r => ({ id: r.id, user_id: r.user_id, device_id: r.device_id, endpoint: r.endpoint, keys: JSON.parse(r.keys), payload: JSON.parse(r.payload), attempts: r.attempts, max_attempts: r.max_attempts, next_try_at: r.next_try_at, last_attempt_at: r.last_attempt_at, status_code: r.status_code, error_text: r.error_text, created_at: r.created_at }));
+}
+
+export function markPushJobAttempted(id: number, attempts: number, nextTryAt: string) {
+    const stmt = db.prepare('UPDATE push_queue SET attempts = ?, next_try_at = ?, last_attempt_at = datetime(\'now\') WHERE id = ?');
+    stmt.run(attempts, nextTryAt, id);
+}
+
+export function removePushJob(id: number) {
+    const stmt = db.prepare('DELETE FROM push_queue WHERE id = ?');
+    stmt.run(id);
+}
+
+export function getPendingQueue(limit = 50) {
+    const stmt = db.prepare('SELECT id, user_id, device_id, endpoint, attempts, max_attempts, next_try_at, last_attempt_at, status_code, error_text, created_at FROM push_queue ORDER BY next_try_at ASC LIMIT ?');
+    return stmt.all(limit) as any[];
+}
+
+export function getJobById(id: number) {
+    const stmt = db.prepare('SELECT id, user_id, device_id, endpoint, keys, payload, attempts, max_attempts, next_try_at, last_attempt_at, status_code, error_text, created_at FROM push_queue WHERE id = ?');
+    const row = stmt.get(id) as any;
+    if (!row) return null;
+    return { id: row.id, user_id: row.user_id, device_id: row.device_id, endpoint: row.endpoint, keys: JSON.parse(row.keys), payload: JSON.parse(row.payload), attempts: row.attempts, max_attempts: row.max_attempts, next_try_at: row.next_try_at, last_attempt_at: row.last_attempt_at, status_code: row.status_code, error_text: row.error_text, created_at: row.created_at };
+}
+
+export function cancelJob(id: number) {
+    const stmt = db.prepare('DELETE FROM push_queue WHERE id = ?');
+    stmt.run(id);
+}
+
+export function requeueJob(id: number, delayMs = 0) {
+    const next = new Date(Date.now() + delayMs).toISOString();
+    const stmt = db.prepare('UPDATE push_queue SET attempts = 0, next_try_at = ?, error_text = NULL, status_code = NULL, last_attempt_at = NULL WHERE id = ?');
+    stmt.run(next, id);
+}
+
+export function recordJobError(id: number, errorMessage: string, statusCode?: number) {
+    const stmt = db.prepare('UPDATE push_queue SET error_text = ?, last_attempt_at = datetime(\'now\')' + (typeof statusCode === 'number' ? ', status_code = ?' : '') + ' WHERE id = ?');
+    if (typeof statusCode === 'number') stmt.run(errorMessage, statusCode, id);
+    else stmt.run(errorMessage, id);
+}
+
+export function markJobFailed(id: number, attempts: number, errorMessage: string, statusCode?: number) {
+    const stmt = db.prepare('UPDATE push_queue SET attempts = ?, error_text = ?, last_attempt_at = datetime(\'now\')' + (typeof statusCode === 'number' ? ', status_code = ?' : '') + ', next_try_at = NULL WHERE id = ?');
+    if (typeof statusCode === 'number') stmt.run(attempts, errorMessage, statusCode, id);
+    else stmt.run(attempts, errorMessage, id);
+}

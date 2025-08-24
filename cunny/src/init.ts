@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const dataDir = path.join(__dirname, "../data");
-const dbPath = path.join(dataDir, "subscriptions.db");
+const dbPath = path.join(dataDir, "cunny.db");
 const schemaPath = path.join(__dirname, "../config/schema.sql");
 const vapidKeyPath = path.join(dataDir, "vapid.json");
 const markerPath = path.join(dataDir, ".initialized");
@@ -22,6 +22,7 @@ let initialized = false;
 
 setLoggerConfig({
     logPath: path.join(dataDir, "cunny.log"),
+    auditPath: path.join(dataDir, "admin-audit.log"),
     logLevel: process.env.LOG_LEVEL as any || "info"
 });
 

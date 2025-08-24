@@ -1,5 +1,6 @@
 import { logWarn, logInfo } from "./logger.js";
-import { getPushGatewaySecret, getAdminApiKeys } from "./init.js";
+import { getAdminApiKeys } from "./init.js";
+import { getPushGatewaySecrets } from "./secretManager.js";
 
 function extractAuthValue(req: any) {
     const authHeader = (req.headers?.authorization as string) || (req.headers?.["x-api-key"] as string) || "";
@@ -10,9 +11,9 @@ function extractAuthValue(req: any) {
 }
 
 export function pushAuthMiddleware(req: any, res: any, next: any) {
-    const secret = getPushGatewaySecret();
     const provided = extractAuthValue(req);
-    if (provided !== secret) {
+    const valid = getPushGatewaySecrets() || [];
+    if (!provided || !valid.includes(provided)) {
         logWarn("auth", `Unauthorized notify attempt from ${req.ip || req.socket?.remoteAddress}`);
 
         return res.status(401).json({ error: "unauthorized" });

@@ -2,10 +2,16 @@
 import express from "express";
 import cors from "cors";
 import webpush from "web-push";
-import { addSubscription, getSubscriptions, removeSubscription, getSubscriptionByUserDevice, getSubscriptionByEndpoint, getSubscriptionsByUser } from "./db.js";
-import { logInfo, logWarn, logError } from "./logger.js";
+import { addSubscription, getSubscriptions, removeSubscription, getSubscriptionByUserDevice, getSubscriptionByEndpoint, getSubscriptionsByUser, enqueuePushJob, getPendingQueue, getJobById, cancelJob, requeueJob } from "./db.js";
+import { logInfo, logWarn, logError, logAudit } from "./logger.js";
 import { ensureInitialized, getVapidData as getVapidDetails } from "./init.js";
 import { pushAuthMiddleware, adminAuthMiddleware } from "./auth.js";
+import { rotatePushSecret as rotatePushSecretInternal, rotateAdminKey as rotateAdminKeyInternal, revokeAdminKeyById as revokeAdminKeyInternal, listAdminKeys as listAdminKeysInternal } from "./secretManager.js";
+import { Worker } from 'worker_threads';
+
+let pushWorker: Worker | null = null;
+let inProcessWorkerStop: (() => Promise<void>) | null = null;
+let workerInProcess = false;
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -82,6 +88,32 @@ app.get("/subscriptions/:user_id", adminAuthMiddleware, (req, res) => {
     res.json(getSubscriptionsByUser(userId));
 });
 
+app.post("/admin/rotate-push", adminAuthMiddleware, (req, res) => {
+    const entry = rotatePushSecretInternal();
+    logAudit("rotate-push", { id: entry.id }, req.ip || req.socket?.remoteAddress);
+    res.json({ pushGatewaySecret: entry.secret, id: entry.id, created_at: entry.created_at });
+});
+
+app.post("/admin/rotate-admin", adminAuthMiddleware, (req, res) => {
+    // optional query param ?append=false to replace keys instead of appending
+    const append = req.query.append !== 'false';
+    const entry = rotateAdminKeyInternal(append);
+    logAudit("rotate-admin", { id: entry.id }, req.ip || req.socket?.remoteAddress);
+    res.json({ adminKey: entry.key, id: entry.id, created_at: entry.created_at });
+});
+
+app.post("/admin/revoke-admin", adminAuthMiddleware, (req, res) => {
+    const { id } = req.body || {};
+    if (!id) return res.status(400).json({ error: "missing id" });
+    const result = revokeAdminKeyInternal(id);
+    logAudit("revoke-admin", { id }, req.ip || req.socket?.remoteAddress);
+    res.json(result);
+});
+
+app.get("/admin/keys", adminAuthMiddleware, (req, res) => {
+    res.json(listAdminKeysInternal());
+});
+
 app.get("/_matrix/push/v1/health", (req, res) => {
     res.json({ status: "ok" });
 });
@@ -91,53 +123,116 @@ app.post("/_matrix/push/v1/notify", pushAuthMiddleware, async (req, res) => {
     if (!body || !Array.isArray(body.devices) || !body.event) {
         return res.status(400).json({ error: "invalid payload" });
     }
-
-    let results = [];
+    let queued = 0;
     for (const device of body.devices) {
-        // device.user_id and device.device_id are provided by Synapse
-        // device.data.webpush should contain the subscription
         const { user_id, device_id, data } = device;
-
-        // Prefer persisted subscription (user+device) if present, otherwise use the provided data.webpush fallback.
-        let subscription = null;
+        let subscription = null as any;
         if (user_id && device_id) {
             const stored = getSubscriptionByUserDevice(user_id, device_id);
             if (stored) subscription = { endpoint: stored.endpoint, keys: stored.keys };
         }
         if (!subscription) subscription = data?.webpush;
+        if (!subscription) continue;
 
-        if (!subscription) {
-            results.push({ device_id, error: "no webpush subscription available" });
-            continue;
+        enqueuePushJob({ user_id, device_id, endpoint: subscription.endpoint, keys: subscription.keys, payload: body.event });
+        queued++;
+    }
+
+    res.json({ queued });
+});
+
+app.get('/admin/queue', adminAuthMiddleware, (req, res) => {
+    const limit = parseInt(String(req.query.limit || '50'), 10);
+    const rows = getPendingQueue(limit);
+    res.json(rows.map(r => ({ id: r.id, user_id: r.user_id, device_id: r.device_id, endpoint: r.endpoint, attempts: r.attempts, max_attempts: r.max_attempts, next_try_at: r.next_try_at, last_attempt_at: r.last_attempt_at, status_code: r.status_code, error_text: r.error_text, created_at: r.created_at })));
+});
+
+app.get('/admin/queue/:id', adminAuthMiddleware, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'invalid id' });
+    const job = getJobById(id);
+    if (!job) return res.status(404).json({ error: 'not found' });
+    res.json(job);
+});
+
+app.post('/admin/queue/:id/cancel', adminAuthMiddleware, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'invalid id' });
+    cancelJob(id);
+    logAudit('queue-cancel', { id }, req.ip || req.socket?.remoteAddress);
+    res.json({ ok: true });
+});
+
+app.post('/admin/queue/:id/requeue', adminAuthMiddleware, (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'invalid id' });
+    const delay = parseInt(String(req.body?.delayMs || 0), 10) || 0;
+    requeueJob(id, delay);
+    logAudit('queue-requeue', { id, delay }, req.ip || req.socket?.remoteAddress);
+    res.json({ ok: true });
+});
+
+const _server = app.listen(port, async () => {
+    (app as any).locals = (app as any).locals || {};
+    (app as any).locals.serverInstance = _server;
+    logInfo("server", `Server running on http://localhost:${port}`);
+    try {
+        const url = new URL('./pushWorker.js', import.meta.url).href;
+        const mod = await import(url) as any;
+        if (typeof mod?.stop === 'function') inProcessWorkerStop = () => mod.stop();
+        workerInProcess = true;
+        logInfo('worker', 'Push worker started in-process');
+    } catch (err) {
+        logError('worker', `Failed to start push worker via dynamic import ./pushWorker.js: ${err instanceof Error ? err.message : String(err)}`);
+    }
+});
+
+const server = app.listen as unknown;
+
+async function gracefulShutdown(signal: string) {
+    try {
+        logInfo('shutdown', `Received ${signal}, starting graceful shutdown`);
+
+        if (pushWorker) {
+            try {
+                pushWorker.postMessage('stop');
+                const wait = new Promise<void>((resolve) => {
+                    const t = setTimeout(() => resolve(), 5000);
+                    pushWorker?.once('exit', () => { clearTimeout(t); resolve(); });
+                });
+                await wait;
+                logInfo('shutdown', 'Worker thread stopped');
+            } catch (e) {
+                logWarn('shutdown', `Error stopping worker thread: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+
+        if (workerInProcess && inProcessWorkerStop) {
+            try {
+                await Promise.race([inProcessWorkerStop(), new Promise<void>(r => setTimeout(r, 5000))]);
+                logInfo('shutdown', 'In-process worker stopped');
+            } catch (e) {
+                logWarn('shutdown', `Error stopping in-process worker: ${e instanceof Error ? e.message : String(e)}`);
+            }
         }
 
         try {
-            await webpush.sendNotification(subscription, JSON.stringify(body.event));
-            results.push({ device_id, success: true });
-        } catch (error) {
-            const errAny = error as any;
-            const statusCode = errAny?.statusCode || errAny?.status || undefined;
-            // If endpoint is known and error indicates the subscription is gone, remove it
-            const endpoint = (subscription as any)?.endpoint || undefined;
-            if (statusCode === 404 || statusCode === 410) {
-                if (endpoint) {
-                    const removed = removeSubscription(endpoint);
-                    if (removed.success) {
-                        logInfo("push", `Removed invalid subscription for endpoint ${endpoint} due to status ${statusCode}`);
-                        results.push({ device_id, error: errAny?.message || String(errAny), removed: true });
-                        continue;
-                    } else {
-                        logWarn("push", `Failed to remove subscription for ${endpoint}: ${removed.error}`);
-                    }
-                }
+            const srv = (app as any).locals?.serverInstance || null;
+            if (srv && typeof srv.close === 'function') {
+                await new Promise<void>((resolve, reject) => srv.close((err: any) => err ? reject(err) : resolve()));
+                logInfo('shutdown', 'HTTP server closed');
             }
-
-            results.push({ device_id, error: errAny instanceof Error ? errAny.message : String(errAny) });
+        } catch (e) {
+            logWarn('shutdown', `Error closing HTTP server: ${e instanceof Error ? e.message : String(e)}`);
         }
-    }
-    res.json({ results });
-});
 
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
-});
+        logInfo('shutdown', 'Graceful shutdown complete, exiting');
+        process.exit(0);
+    } catch (err) {
+        logError('shutdown', `Shutdown failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+    }
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
