@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import webpush from "web-push";
 import { addSubscription, getSubscriptions, removeSubscription, getSubscriptionByUserDevice, getSubscriptionByEndpoint, getSubscriptionsByUser, enqueuePushJob, getPendingQueue, getJobById, cancelJob, requeueJob } from "./db.js";
+import { createHash } from 'crypto';
 import { logInfo, logWarn, logError, logAudit } from "./logger.js";
 import { ensureInitialized, getVapidData as getVapidDetails } from "./init.js";
 import { pushAuthMiddleware, adminAuthMiddleware } from "./auth.js";
@@ -124,6 +125,7 @@ app.post("/_matrix/push/v1/notify", pushAuthMiddleware, async (req, res) => {
         return res.status(400).json({ error: "invalid payload" });
     }
     let queued = 0;
+    const deviceResults: any[] = [];
     for (const device of body.devices) {
         const { user_id, device_id, data } = device;
         let subscription = null as any;
@@ -134,11 +136,34 @@ app.post("/_matrix/push/v1/notify", pushAuthMiddleware, async (req, res) => {
         if (!subscription) subscription = data?.webpush;
         if (!subscription) continue;
 
-        enqueuePushJob({ user_id, device_id, endpoint: subscription.endpoint, keys: subscription.keys, payload: body.event });
-        queued++;
+        // compute dedupe key: prefer Matrix event_id when present
+        let dedupeKey: string | undefined = undefined;
+        try {
+            const evt = body.event;
+            if (evt && evt.event_id) {
+                dedupeKey = `${evt.event_id}::${user_id || '-'}::${device_id || '-'};`;
+            } else {
+                const h = createHash('sha1');
+                h.update(JSON.stringify(body.event || {}));
+                h.update('|');
+                h.update(String(user_id || ''));
+                h.update('|');
+                h.update(String(device_id || ''));
+                dedupeKey = h.digest('hex');
+            }
+        } catch (e) {
+            // ignore dedupe generation errors
+        }
+
+        const enqRes = enqueuePushJob({ user_id, device_id, endpoint: subscription.endpoint, keys: subscription.keys, payload: body.event, dedupe_key: dedupeKey }) as any;
+        const inserted = enqRes && typeof enqRes.inserted === 'boolean' ? enqRes.inserted : true;
+        const deduped = !!(dedupeKey && !inserted);
+        if (deduped) logInfo('notify', `Deduped job for user=${user_id} device=${device_id} endpoint=${subscription.endpoint}`);
+        if (inserted) queued += 1;
+        deviceResults.push({ user_id, device_id, endpoint: subscription.endpoint, deduped, inserted });
     }
 
-    res.json({ queued });
+    res.json({ queued, results: deviceResults });
 });
 
 app.get('/admin/queue', adminAuthMiddleware, (req, res) => {

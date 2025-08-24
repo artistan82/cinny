@@ -134,9 +134,41 @@ export function removeSubscription(endpoint: string): { success: boolean; error?
     return { success: true };
 }
 
-export function enqueuePushJob(job: { user_id?: string; device_id?: string; endpoint: string; keys: any; payload: any; max_attempts?: number }) {
-    const stmt = db.prepare('INSERT INTO push_queue (user_id, device_id, endpoint, keys, payload, max_attempts) VALUES (?, ?, ?, ?, ?, ?)');
-    stmt.run(job.user_id || null, job.device_id || null, job.endpoint, JSON.stringify(job.keys), JSON.stringify(job.payload), job.max_attempts || 5);
+export function enqueuePushJob(job: { user_id?: string; device_id?: string; endpoint: string; keys: any; payload: any; max_attempts?: number; dedupe_key?: string }) {
+    const dedupe = job.dedupe_key || null;
+    const ttlMs = Math.max(1000, parseInt(process.env.DEDUPE_TTL_MS || '60000', 10));
+
+    if (!dedupe) {
+        const stmt = db.prepare('INSERT INTO push_queue (user_id, device_id, endpoint, keys, payload, max_attempts) VALUES (?, ?, ?, ?, ?, ?)');
+        const info = stmt.run(job.user_id || null, job.device_id || null, job.endpoint, JSON.stringify(job.keys), JSON.stringify(job.payload), job.max_attempts || 5);
+        const jobId = info.lastInsertRowid as number;
+        return { inserted: true, job_id: jobId };
+    }
+
+    const nowMs = Date.now();
+    const expiresAt = nowMs + ttlMs;
+
+    const tx = db.transaction(() => {
+        db.prepare('DELETE FROM dedupe WHERE expires_at <= ?').run(nowMs);
+
+        // check for existing dedupe entry and include some job info for caller
+        const existing = db.prepare(
+            'SELECT d.job_id as job_id, d.expires_at as expires_at, p.next_try_at as next_try_at FROM dedupe d LEFT JOIN push_queue p ON p.id = d.job_id WHERE d.dedupe_key = ? AND d.endpoint = ? LIMIT 1'
+        ).get(dedupe, job.endpoint) as { job_id: number; expires_at: number; next_try_at: string } | undefined;
+        if (existing) {
+            return { inserted: false, existing_job_id: existing.job_id, dedupe_expires_at: existing.expires_at, existing_next_try_at: existing.next_try_at };
+        }
+
+        const insert = db.prepare('INSERT INTO push_queue (user_id, device_id, endpoint, keys, payload, max_attempts, dedupe_key) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        const info = insert.run(job.user_id || null, job.device_id || null, job.endpoint, JSON.stringify(job.keys), JSON.stringify(job.payload), job.max_attempts || 5, dedupe);
+        const jobId = info.lastInsertRowid as number;
+
+        db.prepare('INSERT INTO dedupe (dedupe_key, endpoint, job_id, expires_at) VALUES (?, ?, ?, ?)').run(dedupe, job.endpoint, jobId, expiresAt);
+
+        return { inserted: true, job_id: jobId, dedupe_expires_at: expiresAt };
+    });
+
+    return tx();
 }
 
 export function fetchDuePushJobs(limit = 10) {
